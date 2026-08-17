@@ -1,0 +1,137 @@
+{
+  "name": "Quote",
+  "type": "object",
+  "properties": {
+    "quote_number": {
+      "type": "string",
+      "title": "Quote Number"
+    },
+    "project_name": {
+      "type": "string",
+      "title": "Project Name"
+    },
+    "project_type": {
+      "type": "string",
+      "enum": [
+        "wire_harness",
+        "cnc_machining",
+        "pcb_population",
+        "box_build"
+      ],
+      "default": "cnc_machining",
+      "title": "Project Type"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "new",
+        "in_review",
+        "quoted",
+        "sent",
+        "accepted",
+        "rejected"
+      ],
+      "default": "new",
+      "title": "Status"
+    },
+    "customer_id": {
+      "type": "string",
+      "title": "Customer ID"
+    },
+    "customer_name": {
+      "type": "string",
+      "title": "Customer Name"
+    },
+    "customer_email": {
+      "type": "string",
+      "title": "Customer Email"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "default": [],
+      "title": "CAD Files"
+    },
+    "line_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unit_price": {
+            "type": "number"
+          }
+        }
+      },
+      "default": [],
+      "title": "Line Items"
+    },
+    "labor_hours": {
+      "type": "number",
+      "default": 0,
+      "title": "Labor Hours"
+    },
+    "labor_rate": {
+      "type": "number",
+      "default": 0,
+      "title": "Labor Rate"
+    },
+    "lead_time_days": {
+      "type": "number",
+      "title": "Lead Time (days)"
+    },
+    "notes": {
+      "type": "string",
+      "title": "Notes"
+    },
+    "review_notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          }
+        }
+      },
+      "default": [],
+      "title": "Review Notes"
+    },
+    "subtotal": {
+      "type": "number",
+      "default": 0,
+      "title": "Subtotal"
+    },
+    "total": {
+      "type": "number",
+      "default": 0,
+      "title": "Total"
+    }
+  },
+  "required": [
+    "project_name",
+    "project_type",
+    "customer_id"
+  ]
+}

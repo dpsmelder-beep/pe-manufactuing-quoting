@@ -1,0 +1,31 @@
+{
+  "name": "Customer",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "title": "Contact Name"
+    },
+    "company": {
+      "type": "string",
+      "title": "Company"
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "title": "Email"
+    },
+    "phone": {
+      "type": "string",
+      "title": "Phone"
+    },
+    "address": {
+      "type": "string",
+      "title": "Address"
+    }
+  },
+  "required": [
+    "name",
+    "email"
+  ]
+}
