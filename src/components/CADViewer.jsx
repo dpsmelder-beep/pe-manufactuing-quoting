@@ -157,12 +157,12 @@ export default function CADViewer({ fileUrl, fileName }) {
 
     meshes.forEach((mesh) => {
       const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.BufferAttribute(mesh.attributes.position.array, 3));
+      geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(mesh.attributes.position.array), 3));
       if (mesh.attributes.normal) {
-        geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.attributes.normal.array, 3));
+        geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(mesh.attributes.normal.array), 3));
       }
       if (mesh.index) {
-        geometry.setIndex(new THREE.BufferAttribute(mesh.index.array, 1));
+        geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(mesh.index.array), 1));
       }
 
       const color = mesh.color
