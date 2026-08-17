@@ -2,7 +2,8 @@ import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import occtimportjs from 'occt-import-js';
-import { Loader2, AlertCircle, Box, Eye } from 'lucide-react';
+import { Loader2, AlertCircle, Box, Eye, Maximize2, Minimize2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const OCCT_WASM_URL = 'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/occt-import-js.wasm';
 
@@ -26,6 +27,7 @@ export default function CADViewer({ fileUrl, fileName }) {
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
   const [meshCount, setMeshCount] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -201,8 +203,21 @@ export default function CADViewer({ fileUrl, fileName }) {
   };
 
   return (
-    <div className="relative w-full h-full bg-slate-900 rounded-lg overflow-hidden">
+    <div className={cn(
+      'relative w-full h-full bg-slate-900 overflow-hidden',
+      fullscreen ? 'fixed inset-0 z-50 rounded-none' : 'rounded-lg'
+    )}>
       <div ref={mountRef} className="w-full h-full" />
+      <button
+        onClick={() => setFullscreen(!fullscreen)}
+        className={cn(
+          'absolute z-10 p-2 bg-slate-800/80 hover:bg-slate-700 text-white rounded-lg transition',
+          fullscreen ? 'top-3 right-3' : 'top-2 right-2'
+        )}
+        title={fullscreen ? 'Minimize' : 'View Fullscreen'}
+      >
+        {fullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-4 h-4" />}
+      </button>
       {status === 'idle' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
           <Eye className="w-12 h-12 mb-2 opacity-30" />
