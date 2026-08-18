@@ -4,7 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import StatusBadge from '@/components/StatusBadge';
-import { PROJECT_TYPES, PROJECT_TYPE_COLORS, STATUSES } from '@/lib/constants';
+import { STATUSES } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { Plus, FileText, DollarSign, Clock, TrendingUp } from 'lucide-react';
@@ -129,9 +129,8 @@ export default function Dashboard() {
             <thead className="bg-slate-50 border-b">
               <tr>
                 <th className="text-left px-4 py-3 text-sm font-medium text-slate-500">Quote #</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-slate-500">Project</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-slate-500">Customer</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-slate-500">Type</th>
+                <th className="text-left px-4 py-3 text-sm font-medium text-slate-500">Sales Rep</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-slate-500">Status</th>
                 <th className="text-right px-4 py-3 text-sm font-medium text-slate-500">Total</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-slate-500 hidden md:table-cell">Created</th>
@@ -145,13 +144,8 @@ export default function Dashboard() {
                   className="border-b hover:bg-slate-50 cursor-pointer transition"
                 >
                   <td className="px-4 py-3 text-sm font-medium text-slate-900 whitespace-nowrap">{q.quote_number}</td>
-                  <td className="px-4 py-3 text-sm text-slate-700">{q.project_name}</td>
                   <td className="px-4 py-3 text-sm text-slate-700">{q.customer_name}</td>
-                  <td className="px-4 py-3">
-                    <span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium', PROJECT_TYPE_COLORS[q.project_type])}>
-                      {PROJECT_TYPES[q.project_type]}
-                    </span>
-                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-700">{q.sales_rep_name || '-'}</td>
                   <td className="px-4 py-3"><StatusBadge status={q.status} /></td>
                   <td className="px-4 py-3 text-sm font-medium text-right">${(q.total || 0).toLocaleString()}</td>
                   <td className="px-4 py-3 text-sm text-slate-500 hidden md:table-cell">
