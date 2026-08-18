@@ -13,7 +13,7 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-slate-50 font-body">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 flex-col z-30" style={{ backgroundColor: '#004D61' }}>
+      <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 flex-col z-30" style={{ backgroundColor: '#084d5a' }}>
         {/* Logo */}
         <div className="px-4 py-5 border-b border-white/10">
           <img
@@ -22,7 +22,17 @@ export default function Layout() {
             className="w-full h-auto object-contain"
           />
         </div>
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 p-3 space-y-1">
+          <Link
+            to="/quotes/new"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm font-bold tracking-wide mb-2"
+            style={{ backgroundColor: '#5BD1D7', color: '#004D61' }}
+            onMouseOver={e => e.currentTarget.style.opacity = '0.9'}
+            onMouseOut={e => e.currentTarget.style.opacity = '1'}
+          >
+            <FilePlus className="w-4 h-4" />
+            New Quote
+          </Link>
           {navItems.map(item => {
             const Icon = item.icon;
             const active = location.pathname === item.path;
@@ -34,9 +44,9 @@ export default function Layout() {
                   'flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm font-semibold tracking-wide',
                   active
                     ? 'text-white'
-                    : 'text-white/60 hover:text-white hover:bg-white/10'
+                    : 'text-white hover:bg-white/10'
                 )}
-                style={active ? { backgroundColor: '#5BD1D7', color: '#004D61' } : {}}
+                style={active ? { backgroundColor: '#1a6472', color: '#40e0d0' } : {}}
               >
                 <Icon className="w-4 h-4" />
                 {item.label}
@@ -44,22 +54,10 @@ export default function Layout() {
             );
           })}
         </nav>
-        <div className="p-4 border-t border-white/10">
-          <Link
-            to="/quotes/new"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-lg transition font-bold text-sm tracking-wide uppercase"
-            style={{ backgroundColor: '#5BD1D7', color: '#004D61' }}
-            onMouseOver={e => e.currentTarget.style.opacity = '0.9'}
-            onMouseOut={e => e.currentTarget.style.opacity = '1'}
-          >
-            <FilePlus className="w-4 h-4" />
-            New Quote
-          </Link>
-        </div>
       </aside>
 
       {/* Mobile Header */}
-      <header className="md:hidden flex items-center justify-between text-white px-4 py-3 sticky top-0 z-30" style={{ backgroundColor: '#004D61' }}>
+      <header className="md:hidden flex items-center justify-between text-white px-4 py-3 sticky top-0 z-30" style={{ backgroundColor: '#084d5a' }}>
         <div className="flex items-center">
           <img
             src="https://media.base44.com/images/public/6a8369086a548f4cfcb1ce33/c29719924_PE-Logo-clear.gif"
@@ -76,7 +74,7 @@ export default function Layout() {
                 key={item.path}
                 to={item.path}
                 className={cn('p-1.5 rounded-lg', active ? 'text-white' : 'text-white/60')}
-                style={active ? { backgroundColor: '#5BD1D7', color: '#004D61' } : {}}
+                style={active ? { backgroundColor: '#1a6472', color: '#40e0d0' } : {}}
               >
                 <Icon className="w-5 h-5" />
               </Link>
