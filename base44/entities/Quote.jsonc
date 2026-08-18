@@ -63,6 +63,22 @@
       "default": [],
       "title": "CAD Files"
     },
+    "documents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "default": [],
+      "title": "Reference Documents"
+    },
     "line_items": {
       "type": "array",
       "items": {

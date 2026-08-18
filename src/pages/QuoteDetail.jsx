@@ -30,6 +30,8 @@ export default function QuoteDetail() {
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState('new');
   const [selectedFile, setSelectedFile] = useState(null);
+  const [documents, setDocuments] = useState([]);
+  const [uploadingDocs, setUploadingDocs] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -81,6 +83,7 @@ export default function QuoteDetail() {
       setSalesRepName(q.sales_rep_name || '');
       setQuoteNumber(q.quote_number || '');
       setSalesTerms(q.sales_terms || '');
+      setDocuments(q.documents || []);
       if (q.files && q.files.length > 0) setSelectedFile(q.files[0]);
     } catch (err) {
       toast({ title: 'Error', description: 'Failed to load quote', variant: 'destructive' });
@@ -104,6 +107,7 @@ export default function QuoteDetail() {
         sales_rep_name: salesRepName,
         sales_terms: salesTerms,
         line_items: lineItems,
+        documents,
         notes,
         status,
         subtotal: total,
@@ -135,6 +139,7 @@ export default function QuoteDetail() {
         sales_rep_name: salesRepName,
         sales_terms: salesTerms,
         line_items: lineItems,
+        documents,
         notes,
         status: 'sent',
         subtotal: total,
@@ -174,6 +179,33 @@ export default function QuoteDetail() {
     } finally {
       setDownloading(false);
     }
+  };
+
+  const handleDocUpload = async (e) => {
+    const selected = Array.from(e.target.files);
+    if (!selected.length) return;
+    setUploadingDocs(true);
+    try {
+      const uploaded = [];
+      for (const file of selected) {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        uploaded.push({ url: file_url, name: file.name });
+      }
+      const updated = [...documents, ...uploaded];
+      setDocuments(updated);
+      await base44.entities.Quote.update(id, { documents: updated });
+      toast({ title: 'Documents uploaded', description: `${uploaded.length} file(s) added` });
+    } catch (err) {
+      toast({ title: 'Upload failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setUploadingDocs(false);
+    }
+  };
+
+  const removeDoc = async (index) => {
+    const updated = documents.filter((_, i) => i !== index);
+    setDocuments(updated);
+    await base44.entities.Quote.update(id, { documents: updated });
   };
 
   const handleAddNote = (text) => {
@@ -327,6 +359,33 @@ export default function QuoteDetail() {
               <Label className="text-xs">Sales Terms</Label>
               <Textarea value={salesTerms} onChange={(e) => setSalesTerms(e.target.value)} rows={3} />
             </div>
+          </Card>
+
+          <Card className="p-4 space-y-3">
+            <h2 className="font-semibold flex items-center gap-2"><FileText className="w-5 h-5" /> Reference Documents (PDF)</h2>
+            <label className="border-2 border-dashed border-slate-300 rounded-lg p-5 flex flex-col items-center justify-center cursor-pointer hover:border-slate-400 transition">
+              <FileText className="w-6 h-6 text-slate-400 mb-1" />
+              <span className="text-sm text-slate-500">Click to upload PDF drawings or specs</span>
+              <span className="text-xs text-slate-400 mt-1">.pdf</span>
+              <input type="file" multiple accept="application/pdf,.pdf" className="hidden" onChange={handleDocUpload} disabled={uploadingDocs} />
+            </label>
+            {uploadingDocs && (
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <Loader2 className="w-4 h-4 animate-spin" /> Uploading...
+              </div>
+            )}
+            {documents.length > 0 && (
+              <div className="space-y-2">
+                {documents.map((d, i) => (
+                  <div key={i} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg">
+                    <a href={d.url} target="_blank" rel="noreferrer" className="text-sm font-medium truncate text-primary underline-offset-2 hover:underline flex items-center gap-2">
+                      <FileText className="w-4 h-4" /> {d.name}
+                    </a>
+                    <Button variant="ghost" size="sm" onClick={() => removeDoc(i)}>Remove</Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
       </div>

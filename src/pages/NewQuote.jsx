@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Upload, ArrowLeft, Loader2 } from 'lucide-react';
+import { Upload, ArrowLeft, Loader2, FileText } from 'lucide-react';
 import { useCustomers, customerLabel, useContacts, contactName } from '@/hooks/useCustomers';
 
 export default function NewQuote() {
@@ -28,7 +28,9 @@ export default function NewQuote() {
   const [salesTerms, setSalesTerms] = useState('');
   const [notes, setNotes] = useState('');
   const [files, setFiles] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadingDocs, setUploadingDocs] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingDeal, setLoadingDeal] = useState(false);
   const [searchParams] = useSearchParams();
@@ -106,6 +108,26 @@ export default function NewQuote() {
     }
   };
 
+  const handleDocUpload = async (e) => {
+    const selected = Array.from(e.target.files);
+    if (!selected.length) return;
+    setUploadingDocs(true);
+    try {
+      const uploaded = [];
+      for (const file of selected) {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        uploaded.push({ url: file_url, name: file.name });
+      }
+      setDocuments([...documents, ...uploaded]);
+      toast({ title: 'Documents uploaded', description: `${uploaded.length} file(s) added` });
+    } catch (err) {
+      toast({ title: 'Upload failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setUploadingDocs(false);
+    }
+  };
+
+  const removeDoc = (index) => setDocuments(documents.filter((_, i) => i !== index));
   const removeFile = (index) => setFiles(files.filter((_, i) => i !== index));
 
   const handleSubmit = async () => {
@@ -127,6 +149,7 @@ export default function NewQuote() {
         sales_rep_name: salesRepName,
         sales_terms: salesTerms,
         files,
+        documents,
         notes,
         status: 'new',
         line_items: [],
@@ -217,6 +240,33 @@ export default function NewQuote() {
               <div key={i} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg">
                 <span className="text-sm font-medium truncate">{f.name}</span>
                 <Button variant="ghost" size="sm" onClick={() => removeFile(i)}>Remove</Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-6 space-y-4">
+        <h2 className="font-semibold text-lg">Reference Documents (PDF)</h2>
+        <label className="border-2 border-dashed border-slate-300 rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer hover:border-slate-400 transition">
+          <FileText className="w-8 h-8 text-slate-400 mb-2" />
+          <span className="text-sm text-slate-500">Click to upload PDF drawings or specs</span>
+          <span className="text-xs text-slate-400 mt-1">.pdf</span>
+          <input type="file" multiple accept="application/pdf,.pdf" className="hidden" onChange={handleDocUpload} disabled={uploadingDocs} />
+        </label>
+        {uploadingDocs && (
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <Loader2 className="w-4 h-4 animate-spin" /> Uploading...
+          </div>
+        )}
+        {documents.length > 0 && (
+          <div className="space-y-2">
+            {documents.map((d, i) => (
+              <div key={i} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg">
+                <a href={d.url} target="_blank" rel="noreferrer" className="text-sm font-medium truncate text-primary underline-offset-2 hover:underline flex items-center gap-2">
+                  <FileText className="w-4 h-4" /> {d.name}
+                </a>
+                <Button variant="ghost" size="sm" onClick={() => removeDoc(i)}>Remove</Button>
               </div>
             ))}
           </div>
