@@ -15,11 +15,11 @@ export default function Layout() {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 flex-col z-30" style={{ backgroundColor: '#004D61' }}>
         {/* Logo */}
-        <div className="p-6 border-b border-white/10 flex items-center justify-center">
+        <div className="px-4 py-5 border-b border-white/10">
           <img
             src="https://media.base44.com/images/public/6a8369086a548f4cfcb1ce33/c29719924_PE-Logo-clear.gif"
             alt="PE Manufacturing"
-            className="h-9 w-auto object-contain"
+            className="w-full h-auto object-contain"
           />
         </div>
         <nav className="flex-1 p-4 space-y-1">
