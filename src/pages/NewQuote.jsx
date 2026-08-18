@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Upload, ArrowLeft, Loader2 } from 'lucide-react';
-import { useCustomers, customerLabel } from '@/hooks/useCustomers';
+import { useCustomers, customerLabel, useContacts, contactName } from '@/hooks/useCustomers';
 
 export default function NewQuote() {
   const navigate = useNavigate();
@@ -20,6 +20,8 @@ export default function NewQuote() {
   const [customerName, setCustomerName] = useState('');
   const [customerContact, setCustomerContact] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [contactId, setContactId] = useState('');
+  const { contacts, loading: loadingContacts } = useContacts(customerId);
   const [customerRfqNumber, setCustomerRfqNumber] = useState('');
   const [salesRepName, setSalesRepName] = useState('');
   const [salesTerms, setSalesTerms] = useState('');
@@ -32,7 +34,15 @@ export default function NewQuote() {
     const c = customers.find((x) => x.id === id);
     setCustomerId(id);
     setCustomerName(c ? c.name : '');
-    setCustomerContact(c ? c.name : '');
+    setContactId('');
+    setCustomerContact('');
+    setCustomerEmail('');
+  };
+
+  const handleContactSelect = (cid) => {
+    const c = contacts.find((x) => x.id === cid);
+    setContactId(cid);
+    setCustomerContact(c ? contactName(c) : '');
     setCustomerEmail(c ? c.email || '' : '');
   };
 
@@ -118,7 +128,14 @@ export default function NewQuote() {
           </div>
           <div>
             <Label>Customer Contact</Label>
-            <Input value={customerContact} onChange={(e) => setCustomerContact(e.target.value)} placeholder="Contact person" />
+            <Select value={contactId} onValueChange={handleContactSelect} disabled={!customerId || loadingContacts}>
+              <SelectTrigger><SelectValue placeholder={!customerId ? 'Select customer first' : loadingContacts ? 'Loading...' : 'Select contact'} /></SelectTrigger>
+              <SelectContent>
+                {contacts.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{contactName(c)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <Label>Customer Email</Label>

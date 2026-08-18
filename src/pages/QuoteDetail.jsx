@@ -14,13 +14,14 @@ import LineItemsTable from '@/components/LineItemsTable';
 import ReviewNotesSection from '@/components/ReviewNotesSection';
 import { ArrowLeft, Save, Send, FileText, Box, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useCustomers, customerLabel } from '@/hooks/useCustomers';
+import { useCustomers, customerLabel, useContacts, contactName } from '@/hooks/useCustomers';
 
 export default function QuoteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { customers, loading: loadingCustomers } = useCustomers();
+  const { contacts, loading: loadingContacts } = useContacts(customerId);
 
   const [quote, setQuote] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -36,6 +37,7 @@ export default function QuoteDetail() {
   const [customerName, setCustomerName] = useState('');
   const [customerContact, setCustomerContact] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [contactId, setContactId] = useState('');
   const [customerRfqNumber, setCustomerRfqNumber] = useState('');
   const [salesRepName, setSalesRepName] = useState('');
   const [quoteNumber, setQuoteNumber] = useState('');
@@ -45,7 +47,15 @@ export default function QuoteDetail() {
     const c = customers.find((x) => x.id === custId);
     setCustomerId(custId);
     setCustomerName(c ? c.name : '');
-    setCustomerContact(c ? c.name : '');
+    setContactId('');
+    setCustomerContact('');
+    setCustomerEmail('');
+  };
+
+  const handleContactSelect = (cid) => {
+    const c = contacts.find((x) => x.id === cid);
+    setContactId(cid);
+    setCustomerContact(c ? contactName(c) : '');
     setCustomerEmail(c ? c.email || '' : '');
   };
 
@@ -261,7 +271,14 @@ export default function QuoteDetail() {
             </div>
             <div>
               <Label className="text-xs">Customer Contact</Label>
-              <Input value={customerContact} onChange={(e) => setCustomerContact(e.target.value)} />
+              <Select value={contactId} onValueChange={handleContactSelect} disabled={!customerId || loadingContacts}>
+                <SelectTrigger><SelectValue placeholder={!customerId ? 'Select customer first' : loadingContacts ? 'Loading...' : 'Select contact'} /></SelectTrigger>
+                <SelectContent>
+                  {contacts.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{contactName(c)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label className="text-xs">Customer Email</Label>
