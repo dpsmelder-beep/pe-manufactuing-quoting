@@ -24,14 +24,18 @@ export default function QuoteDetail() {
   const [loading, setLoading] = useState(true);
   const [lineItems, setLineItems] = useState([]);
   const [reviewNotes, setReviewNotes] = useState([]);
-  const [laborHours, setLaborHours] = useState(0);
-  const [laborRate, setLaborRate] = useState(0);
-  const [leadTime, setLeadTime] = useState(0);
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState('new');
   const [selectedFile, setSelectedFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+
+  const [customerName, setCustomerName] = useState('');
+  const [customerContact, setCustomerContact] = useState('');
+  const [customerRfqNumber, setCustomerRfqNumber] = useState('');
+  const [salesRepName, setSalesRepName] = useState('');
+  const [quoteNumber, setQuoteNumber] = useState('');
+  const [salesTerms, setSalesTerms] = useState('');
 
   useEffect(() => {
     loadQuote();
@@ -43,11 +47,14 @@ export default function QuoteDetail() {
       setQuote(q);
       setLineItems(q.line_items || []);
       setReviewNotes(q.review_notes || []);
-      setLaborHours(q.labor_hours || 0);
-      setLaborRate(q.labor_rate || 0);
-      setLeadTime(q.lead_time_days || 0);
       setNotes(q.notes || '');
       setStatus(q.status || 'new');
+      setCustomerName(q.customer_name || '');
+      setCustomerContact(q.customer_contact || '');
+      setCustomerRfqNumber(q.customer_rfq_number || '');
+      setSalesRepName(q.sales_rep_name || '');
+      setQuoteNumber(q.quote_number || '');
+      setSalesTerms(q.sales_terms || '');
       if (q.files && q.files.length > 0) setSelectedFile(q.files[0]);
     } catch (err) {
       toast({ title: 'Error', description: 'Failed to load quote', variant: 'destructive' });
@@ -56,26 +63,27 @@ export default function QuoteDetail() {
     }
   };
 
-  const lineItemsTotal = lineItems.reduce((s, i) => s + (i.quantity || 0) * (i.unit_price || 0), 0);
-  const laborCost = (laborHours || 0) * (laborRate || 0);
-  const subtotal = lineItemsTotal + laborCost;
-  const total = subtotal;
+  const lineItemsTotal = lineItems.reduce((s, i) => s + (i.quantity || 0) * (i.price || 0), 0);
+  const total = lineItemsTotal;
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await base44.entities.Quote.update(id, {
+      const payload = {
+        customer_name: customerName,
+        customer_contact: customerContact,
+        customer_rfq_number: customerRfqNumber,
+        sales_rep_name: salesRepName,
+        sales_terms: salesTerms,
         line_items: lineItems,
-        labor_hours: laborHours,
-        labor_rate: laborRate,
-        lead_time_days: leadTime,
         notes,
         status,
-        subtotal,
+        subtotal: total,
         total,
-      });
+      };
+      await base44.entities.Quote.update(id, payload);
       toast({ title: 'Saved', description: 'Quote updated' });
-      setQuote({ ...quote, status, line_items: lineItems, subtotal, total });
+      setQuote({ ...quote, ...payload });
     } catch (err) {
       toast({ title: 'Error', description: 'Failed to save', variant: 'destructive' });
     } finally {
@@ -91,13 +99,15 @@ export default function QuoteDetail() {
     setSending(true);
     try {
       await base44.entities.Quote.update(id, {
+        customer_name: customerName,
+        customer_contact: customerContact,
+        customer_rfq_number: customerRfqNumber,
+        sales_rep_name: salesRepName,
+        sales_terms: salesTerms,
         line_items: lineItems,
-        labor_hours: laborHours,
-        labor_rate: laborRate,
-        lead_time_days: leadTime,
         notes,
         status: 'sent',
-        subtotal,
+        subtotal: total,
         total,
       });
       await base44.functions.invoke('sendQuote', { quoteId: id });
@@ -139,10 +149,10 @@ export default function QuoteDetail() {
           </Button>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">{quote.project_name}</h1>
+              <h1 className="text-2xl font-bold">{quoteNumber}</h1>
               <StatusBadge status={status} />
             </div>
-            <p className="text-sm text-slate-500">{quote.quote_number} • {quote.customer_name}</p>
+            <p className="text-sm text-slate-500">{customerName}{customerContact ? ` • ${customerContact}` : ''}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -202,55 +212,52 @@ export default function QuoteDetail() {
               </div>
             )}
           </Card>
-        </div>
 
-        <div className="lg:col-span-2 space-y-4">
           <Card className="p-4">
             <h2 className="font-semibold mb-3">Line Items</h2>
             <LineItemsTable items={lineItems} onChange={setLineItems} />
-            <div className="mt-4 pt-4 border-t space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">Labor Hours</Label>
-                  <Input type="number" value={laborHours} onChange={(e) => setLaborHours(parseFloat(e.target.value) || 0)} />
-                </div>
-                <div>
-                  <Label className="text-xs">Labor Rate ($/hr)</Label>
-                  <Input type="number" value={laborRate} onChange={(e) => setLaborRate(parseFloat(e.target.value) || 0)} />
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-4 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Line Items:</span>
-              <span className="font-medium">${lineItemsTotal.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Labor:</span>
-              <span className="font-medium">${laborCost.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Subtotal:</span>
-              <span className="font-medium">${subtotal.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-lg font-bold pt-2 border-t">
+            <div className="mt-4 pt-4 border-t flex justify-between text-lg font-bold">
               <span>Total</span>
               <span>${total.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-sm text-slate-500">
-              <span>Lead Time:</span>
-              <span>{leadTime || 'TBD'} {leadTime ? 'days' : ''}</span>
-            </div>
           </Card>
+        </div>
 
-          <Card className="p-4">
-            <Label className="text-xs">Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="mt-1" />
+        <div className="lg:col-span-2 space-y-4">
+          <Card className="p-4 space-y-3">
+            <h2 className="font-semibold">Quote Info</h2>
+            <div>
+              <Label className="text-xs">Quote Number</Label>
+              <Input value={quoteNumber} readOnly className="bg-slate-50" />
+            </div>
+            <div>
+              <Label className="text-xs">Customer Name</Label>
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Customer Contact</Label>
+              <Input value={customerContact} onChange={(e) => setCustomerContact(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Customer RFQ #</Label>
+              <Input value={customerRfqNumber} onChange={(e) => setCustomerRfqNumber(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Sales Rep</Label>
+              <Input value={salesRepName} onChange={(e) => setSalesRepName(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Sales Terms</Label>
+              <Textarea value={salesTerms} onChange={(e) => setSalesTerms(e.target.value)} rows={3} />
+            </div>
           </Card>
         </div>
       </div>
+
+      <Card className="p-4 space-y-2">
+        <Label>General Note</Label>
+        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} />
+      </Card>
 
       <Card className="p-4">
         <h2 className="font-semibold mb-3">Review Notes & Feedback</h2>
