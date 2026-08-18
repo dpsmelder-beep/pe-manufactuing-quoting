@@ -6,21 +6,6 @@
       "type": "string",
       "title": "Quote Number"
     },
-    "project_name": {
-      "type": "string",
-      "title": "Project Name"
-    },
-    "project_type": {
-      "type": "string",
-      "enum": [
-        "wire_harness",
-        "cnc_machining",
-        "pcb_population",
-        "box_build"
-      ],
-      "default": "cnc_machining",
-      "title": "Project Type"
-    },
     "status": {
       "type": "string",
       "enum": [
@@ -34,17 +19,33 @@
       "default": "new",
       "title": "Status"
     },
-    "customer_id": {
-      "type": "string",
-      "title": "Customer ID"
-    },
     "customer_name": {
       "type": "string",
       "title": "Customer Name"
     },
+    "customer_contact": {
+      "type": "string",
+      "title": "Customer Contact"
+    },
     "customer_email": {
       "type": "string",
       "title": "Customer Email"
+    },
+    "customer_rfq_number": {
+      "type": "string",
+      "title": "Customer RFQ #"
+    },
+    "sales_rep_name": {
+      "type": "string",
+      "title": "Sales Rep"
+    },
+    "sales_terms": {
+      "type": "string",
+      "title": "Sales Terms"
+    },
+    "customer_id": {
+      "type": "string",
+      "title": "Customer ID"
     },
     "files": {
       "type": "array",
@@ -67,37 +68,26 @@
       "items": {
         "type": "object",
         "properties": {
-          "description": {
+          "part_number": {
             "type": "string"
           },
           "quantity": {
             "type": "number"
           },
-          "unit_price": {
+          "price": {
             "type": "number"
+          },
+          "notes": {
+            "type": "string"
           }
         }
       },
       "default": [],
       "title": "Line Items"
     },
-    "labor_hours": {
-      "type": "number",
-      "default": 0,
-      "title": "Labor Hours"
-    },
-    "labor_rate": {
-      "type": "number",
-      "default": 0,
-      "title": "Labor Rate"
-    },
-    "lead_time_days": {
-      "type": "number",
-      "title": "Lead Time (days)"
-    },
     "notes": {
       "type": "string",
-      "title": "Notes"
+      "title": "General Note"
     },
     "review_notes": {
       "type": "array",
@@ -130,8 +120,6 @@
     }
   },
   "required": [
-    "project_name",
-    "project_type",
-    "customer_id"
+    "customer_name"
   ]
 }
