@@ -12,7 +12,8 @@ import StatusBadge from '@/components/StatusBadge';
 import CADViewer from '@/components/CADViewer';
 import LineItemsTable from '@/components/LineItemsTable';
 import ReviewNotesSection from '@/components/ReviewNotesSection';
-import { ArrowLeft, Save, Send, FileText, Box, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Send, FileText, Box, Loader2, Download } from 'lucide-react';
+import { generateQuotePdf } from '@/lib/generateQuotePdf';
 import { cn } from '@/lib/utils';
 import { useCustomers, customerLabel, useContacts, contactName } from '@/hooks/useCustomers';
 
@@ -31,6 +32,7 @@ export default function QuoteDetail() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const [customerId, setCustomerId] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -149,6 +151,31 @@ export default function QuoteDetail() {
     }
   };
 
+  const handleDownloadPdf = async () => {
+    setDownloading(true);
+    try {
+      generateQuotePdf({
+        quote_number: quoteNumber,
+        customer_name: customerName,
+        customer_contact: customerContact,
+        customer_email: customerEmail,
+        customer_rfq_number: customerRfqNumber,
+        sales_rep_name: salesRepName,
+        sales_terms: salesTerms,
+        notes,
+        line_items: lineItems,
+        subtotal: total,
+        total,
+        status,
+      });
+      toast({ title: 'PDF ready', description: 'Saved to your downloads' });
+    } catch (err) {
+      toast({ title: 'Error', description: 'Failed to generate PDF', variant: 'destructive' });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const handleAddNote = (text) => {
     const note = { text, author: 'Team Member', date: new Date().toISOString() };
     const updated = [...reviewNotes, note];
@@ -198,6 +225,10 @@ export default function QuoteDetail() {
           <Button variant="outline" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
             Save
+          </Button>
+          <Button variant="secondary" onClick={handleDownloadPdf} disabled={downloading}>
+            {downloading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Download className="w-4 h-4 mr-2" />}
+            Download PDF
           </Button>
           <Button onClick={handleSend} disabled={sending}>
             {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
