@@ -21,7 +21,6 @@ export default function QuoteDetail() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { customers, loading: loadingCustomers } = useCustomers();
-  const { contacts, loading: loadingContacts } = useContacts(customerId);
 
   const [quote, setQuote] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,6 +37,7 @@ export default function QuoteDetail() {
   const [customerContact, setCustomerContact] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [contactId, setContactId] = useState('');
+  const { contacts, loading: loadingContacts } = useContacts(customerId);
   const [customerRfqNumber, setCustomerRfqNumber] = useState('');
   const [salesRepName, setSalesRepName] = useState('');
   const [quoteNumber, setQuoteNumber] = useState('');
