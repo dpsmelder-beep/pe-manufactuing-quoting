@@ -154,7 +154,7 @@ export default function QuoteDetail() {
   const handleDownloadPdf = async () => {
     setDownloading(true);
     try {
-      generateQuotePdf({
+      await generateQuotePdf({
         quote_number: quoteNumber,
         customer_name: customerName,
         customer_contact: customerContact,
