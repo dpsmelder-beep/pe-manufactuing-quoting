@@ -17,7 +17,7 @@ export default function Layout() {
         {/* Logo */}
         <div className="p-6 border-b border-white/10 flex items-center justify-center">
           <img
-            src="https://media.base44.com/images/public/6a8369086a548f4cfcb1ce33/a0dfb7dd6_Asset22211.png"
+            src="https://media.base44.com/images/public/6a8369086a548f4cfcb1ce33/c29719924_PE-Logo-clear.gif"
             alt="PE Manufacturing"
             className="h-9 w-auto object-contain"
           />
@@ -62,7 +62,7 @@ export default function Layout() {
       <header className="md:hidden flex items-center justify-between text-white px-4 py-3 sticky top-0 z-30" style={{ backgroundColor: '#004D61' }}>
         <div className="flex items-center">
           <img
-            src="https://media.base44.com/images/public/6a8369086a548f4cfcb1ce33/a0dfb7dd6_Asset22211.png"
+            src="https://media.base44.com/images/public/6a8369086a548f4cfcb1ce33/c29719924_PE-Logo-clear.gif"
             alt="PE Manufacturing"
             className="h-7 w-auto object-contain"
           />
