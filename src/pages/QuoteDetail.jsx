@@ -14,11 +14,13 @@ import LineItemsTable from '@/components/LineItemsTable';
 import ReviewNotesSection from '@/components/ReviewNotesSection';
 import { ArrowLeft, Save, Send, FileText, Box, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useCustomers, customerLabel } from '@/hooks/useCustomers';
 
 export default function QuoteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { customers, loading: loadingCustomers } = useCustomers();
 
   const [quote, setQuote] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -30,12 +32,22 @@ export default function QuoteDetail() {
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
 
+  const [customerId, setCustomerId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerContact, setCustomerContact] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [customerRfqNumber, setCustomerRfqNumber] = useState('');
   const [salesRepName, setSalesRepName] = useState('');
   const [quoteNumber, setQuoteNumber] = useState('');
   const [salesTerms, setSalesTerms] = useState('');
+
+  const handleCustomerSelect = (custId) => {
+    const c = customers.find((x) => x.id === custId);
+    setCustomerId(custId);
+    setCustomerName(c ? c.name : '');
+    setCustomerContact(c ? c.name : '');
+    setCustomerEmail(c ? c.email || '' : '');
+  };
 
   useEffect(() => {
     loadQuote();
@@ -49,8 +61,10 @@ export default function QuoteDetail() {
       setReviewNotes(q.review_notes || []);
       setNotes(q.notes || '');
       setStatus(q.status || 'new');
+      setCustomerId(q.customer_id || '');
       setCustomerName(q.customer_name || '');
       setCustomerContact(q.customer_contact || '');
+      setCustomerEmail(q.customer_email || '');
       setCustomerRfqNumber(q.customer_rfq_number || '');
       setSalesRepName(q.sales_rep_name || '');
       setQuoteNumber(q.quote_number || '');
@@ -70,8 +84,10 @@ export default function QuoteDetail() {
     setSaving(true);
     try {
       const payload = {
+        customer_id: customerId,
         customer_name: customerName,
         customer_contact: customerContact,
+        customer_email: customerEmail,
         customer_rfq_number: customerRfqNumber,
         sales_rep_name: salesRepName,
         sales_terms: salesTerms,
@@ -99,8 +115,10 @@ export default function QuoteDetail() {
     setSending(true);
     try {
       await base44.entities.Quote.update(id, {
+        customer_id: customerId,
         customer_name: customerName,
         customer_contact: customerContact,
+        customer_email: customerEmail,
         customer_rfq_number: customerRfqNumber,
         sales_rep_name: salesRepName,
         sales_terms: salesTerms,
@@ -232,11 +250,22 @@ export default function QuoteDetail() {
             </div>
             <div>
               <Label className="text-xs">Customer Name</Label>
-              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+              <Select value={customerId} onValueChange={handleCustomerSelect} disabled={loadingCustomers}>
+                <SelectTrigger><SelectValue placeholder={loadingCustomers ? 'Loading...' : 'Select customer'} /></SelectTrigger>
+                <SelectContent>
+                  {customers.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{customerLabel(c)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label className="text-xs">Customer Contact</Label>
               <Input value={customerContact} onChange={(e) => setCustomerContact(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Customer Email</Label>
+              <Input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
             </div>
             <div>
               <Label className="text-xs">Customer RFQ #</Label>

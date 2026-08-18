@@ -7,14 +7,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Upload, ArrowLeft, Loader2 } from 'lucide-react';
+import { useCustomers, customerLabel } from '@/hooks/useCustomers';
 
 export default function NewQuote() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { customers, loading: loadingCustomers } = useCustomers();
 
+  const [customerId, setCustomerId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerContact, setCustomerContact] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [customerRfqNumber, setCustomerRfqNumber] = useState('');
   const [salesRepName, setSalesRepName] = useState('');
   const [salesTerms, setSalesTerms] = useState('');
@@ -22,6 +27,14 @@ export default function NewQuote() {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const handleCustomerSelect = (id) => {
+    const c = customers.find((x) => x.id === id);
+    setCustomerId(id);
+    setCustomerName(c ? c.name : '');
+    setCustomerContact(c ? c.name : '');
+    setCustomerEmail(c ? c.email || '' : '');
+  };
 
   const handleFileUpload = async (e) => {
     const selected = Array.from(e.target.files);
@@ -55,8 +68,10 @@ export default function NewQuote() {
 
       const quote = await base44.entities.Quote.create({
         quote_number: quoteNumber,
+        customer_id: customerId,
         customer_name: customerName,
         customer_contact: customerContact,
+        customer_email: customerEmail,
         customer_rfq_number: customerRfqNumber,
         sales_rep_name: salesRepName,
         sales_terms: salesTerms,
@@ -92,11 +107,22 @@ export default function NewQuote() {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Customer Name *</Label>
-            <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer name" />
+            <Select value={customerId} onValueChange={handleCustomerSelect} disabled={loadingCustomers}>
+              <SelectTrigger><SelectValue placeholder={loadingCustomers ? 'Loading...' : 'Select customer'} /></SelectTrigger>
+              <SelectContent>
+                {customers.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{customerLabel(c)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <Label>Customer Contact</Label>
             <Input value={customerContact} onChange={(e) => setCustomerContact(e.target.value)} placeholder="Contact person" />
+          </div>
+          <div>
+            <Label>Customer Email</Label>
+            <Input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="Customer email" />
           </div>
           <div>
             <Label>Customer RFQ #</Label>
