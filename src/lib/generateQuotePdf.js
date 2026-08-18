@@ -6,11 +6,18 @@ const PRIMARY = [0, 77, 97];      // #004D61
 async function loadImageAsDataUrl(url) {
   const res = await fetch(url);
   const blob = await res.blob();
-  return new Promise((resolve) => {
+  const dataUrl = await new Promise((resolve) => {
     const reader = new FileReader();
     reader.onloadend = () => resolve(reader.result);
     reader.readAsDataURL(blob);
   });
+  const dims = await new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = () => resolve({ w: 0, h: 0 });
+    img.src = dataUrl;
+  });
+  return { dataUrl, ...dims };
 }
 
 export async function generateQuotePdf(quote) {
@@ -22,11 +29,18 @@ export async function generateQuotePdf(quote) {
 
   // ---- Load logo ----
   let logoDataUrl = null;
-  try { logoDataUrl = await loadImageAsDataUrl(LOGO_URL); } catch { /* skip */ }
+  let logoW = 0, logoH = 0;
+  try {
+    const logo = await loadImageAsDataUrl(LOGO_URL);
+    logoDataUrl = logo.dataUrl;
+    // Scale by a target height, preserving natural aspect ratio
+    const targetH = 32;
+    const ratio = logo.w && logo.h ? logo.w / logo.h : 4;
+    logoH = targetH;
+    logoW = targetH * ratio;
+  } catch { /* skip */ }
 
   // ---- Header: logo image on the left ----
-  const logoH = 32;
-  const logoW = 140;
   if (logoDataUrl) {
     doc.addImage(logoDataUrl, 'PNG', margin, y - 4, logoW, logoH);
   }
@@ -39,7 +53,7 @@ export async function generateQuotePdf(quote) {
   doc.text(`Quote #: ${quote.quote_number || '-'}`, pageW - margin, y + 6, { align: 'right' });
   doc.text(`Date: ${today}`, pageW - margin, y + 22, { align: 'right' });
 
-  y += logoH + 16;
+  y += Math.max(logoH, 32) + 16;
 
   // Divider
   doc.setDrawColor(...PRIMARY);
