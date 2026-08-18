@@ -8,10 +8,10 @@ export function useCustomers() {
   useEffect(() => {
     (async () => {
       try {
-        const data = await base44.entities.Customer.list('-created_date', 500);
-        setCustomers(data);
+        const res = await base44.functions.invoke('getAccounts', {});
+        setCustomers(res.data.accounts || []);
       } catch (err) {
-        console.error('Failed to load customers', err);
+        console.error('Failed to load accounts', err);
       } finally {
         setLoading(false);
       }
@@ -22,5 +22,5 @@ export function useCustomers() {
 }
 
 export function customerLabel(c) {
-  return c.company ? `${c.company} — ${c.name}` : c.name;
+  return c.name;
 }
