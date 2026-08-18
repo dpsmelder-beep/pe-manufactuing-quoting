@@ -1,8 +1,7 @@
 import { jsPDF } from 'jspdf';
 
-const LOGO_URL = 'https://media.base44.com/images/public/6a8369086a548f4cfcb1ce33/59a6c82a8_Asset202211.png';
+const LOGO_URL = 'https://media.base44.com/images/public/6a8369086a548f4cfcb1ce33/a0dfb7dd6_Asset22211.png';
 const PRIMARY = [0, 77, 97];      // #004D61
-const ACCENT  = [91, 209, 215];   // #5BD1D7
 
 async function loadImageAsDataUrl(url) {
   const res = await fetch(url);
@@ -25,31 +24,22 @@ export async function generateQuotePdf(quote) {
   let logoDataUrl = null;
   try { logoDataUrl = await loadImageAsDataUrl(LOGO_URL); } catch { /* skip */ }
 
-  // ---- Header: logo + brand text ----
-  const logoSize = 48;
+  // ---- Header: logo image on the left ----
+  const logoH = 32;
+  const logoW = 140;
   if (logoDataUrl) {
-    doc.addImage(logoDataUrl, 'PNG', margin, y - 6, logoSize, logoSize);
+    doc.addImage(logoDataUrl, 'PNG', margin, y - 4, logoW, logoH);
   }
-  const textX = margin + (logoDataUrl ? logoSize + 10 : 0);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.setTextColor(...PRIMARY);
-  doc.text('PE MANUFACTURING', textX, y + 18);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(12);
-  doc.setTextColor(100, 100, 100);
-  doc.text('QUOTATION', textX, y + 34);
 
   // Quote # / date on the right
   const today = new Date().toLocaleDateString();
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
   doc.setTextColor(40, 40, 40);
-  doc.text(`Quote #: ${quote.quote_number || '-'}`, pageW - margin, y + 10, { align: 'right' });
-  doc.text(`Date: ${today}`, pageW - margin, y + 26, { align: 'right' });
+  doc.text(`Quote #: ${quote.quote_number || '-'}`, pageW - margin, y + 6, { align: 'right' });
+  doc.text(`Date: ${today}`, pageW - margin, y + 22, { align: 'right' });
 
-  y += logoSize + 16;
+  y += logoH + 16;
 
   // Divider
   doc.setDrawColor(...PRIMARY);
@@ -57,7 +47,7 @@ export async function generateQuotePdf(quote) {
   doc.line(margin, y, pageW - margin, y);
   y += 20;
 
-  // ---- Customer info block (no "BILL TO" label) ----
+  // ---- Customer info block ----
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
   doc.setTextColor(40, 40, 40);
@@ -68,7 +58,6 @@ export async function generateQuotePdf(quote) {
   ].filter(Boolean);
   billLines.forEach((line) => { doc.text(line, margin, y); y += 16; });
 
-  // RFQ + rep on the right (aligned to same block)
   let rightY = y - billLines.length * 16;
   if (quote.customer_rfq_number) {
     doc.text(`Customer RFQ #: ${quote.customer_rfq_number}`, pageW - margin, rightY, { align: 'right' });
@@ -79,11 +68,11 @@ export async function generateQuotePdf(quote) {
   }
   y += 16;
 
-  // ---- Line Items Table (no "LINE ITEMS" heading) ----
+  // ---- Line Items Table ----
   const tableX = margin;
   const tableW = pageW - margin * 2;
-  // cols: part_number, qty, unit price, line total, notes
-  const colPct = [0.28, 0.10, 0.16, 0.16, 0.30];
+  // cols: part_number, qty, unit price, line total (notes now go under each row)
+  const colPct = [0.40, 0.15, 0.22, 0.23];
   const colX = colPct.map((_, i) =>
     tableX + colPct.slice(0, i).reduce((s, v) => s + v, 0) * tableW
   );
@@ -98,52 +87,57 @@ export async function generateQuotePdf(quote) {
   doc.text('QTY',         colX[1] + 6, y + 15);
   doc.text('UNIT PRICE',  colX[2] + 6, y + 15);
   doc.text('LINE TOTAL',  colX[3] + 6, y + 15);
-  doc.text('NOTES',       colX[4] + 6, y + 15);
   y += 22;
 
   const items = quote.line_items || [];
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
-  doc.setTextColor(40, 40, 40);
 
   if (!items.length) {
+    doc.setTextColor(40, 40, 40);
     doc.text('No line items', tableX + 6, y + 15);
     y += 24;
   } else {
     items.forEach((it, idx) => {
-      const rowH = 24;
+      const qty   = Number(it.quantity) || 0;
+      const price = Number(it.price)    || 0;
+      const lineTotal = qty * price;
+      const noteText = it.notes || '';
+      const noteLines = noteText
+        ? doc.splitTextToSize(noteText, tableW - 12)
+        : [];
+      const baseRowH = 24;
+      const noteH = noteLines.length ? noteLines.length * 14 + 6 : 0;
+      const rowH = baseRowH + noteH;
+
+      // page break before drawing if needed
+      if (y + rowH > pageH - 120) { doc.addPage(); y = margin; }
+
       if (idx % 2 === 0) {
         doc.setFillColor(245, 247, 248);
         doc.rect(tableX, y, tableW, rowH, 'F');
       }
-      const qty   = Number(it.quantity) || 0;
-      const price = Number(it.price)    || 0;
-      const lineTotal = qty * price;
-      const noteLines = doc.splitTextToSize(it.notes || '', colPct[4] * tableW - 12);
 
       doc.setTextColor(40, 40, 40);
       doc.text(String(it.part_number || ''), colX[0] + 6, y + 16);
       doc.text(String(qty || ''),            colX[1] + 6, y + 16);
       doc.text(price ? `$${price.toFixed(2)}` : '', colX[2] + 6, y + 16);
       doc.text(lineTotal ? `$${lineTotal.toFixed(2)}` : '', colX[3] + 6, y + 16);
-      doc.text(noteLines.slice(0, 2),        colX[4] + 6, y + 16);
-      y += rowH;
 
-      if (y > pageH - 120) { doc.addPage(); y = margin; }
+      // notes directly under the line item
+      if (noteLines.length) {
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(90, 90, 90);
+        doc.text(noteLines, colX[0] + 6, y + baseRowH + 12);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(40, 40, 40);
+      }
+      y += rowH;
     });
   }
 
-  // ---- Grand Total ----
-  y += 8;
-  const grandTotal = items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.price) || 0), 0);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(...PRIMARY);
-  doc.text('TOTAL:', pageW - margin - 150, y);
-  doc.text(`$${grandTotal.toFixed(2)}`, pageW - margin, y, { align: 'right' });
-  y += 24;
-
   // ---- Sales Terms ----
+  y += 16;
   if (quote.sales_terms) {
     if (y > pageH - 100) { doc.addPage(); y = margin; }
     doc.setFont('helvetica', 'bold');
