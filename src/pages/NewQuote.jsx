@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { generateQuoteNumber } from '@/lib/quoteNumber';
 import { Button } from '@/components/ui/button';
@@ -30,12 +30,46 @@ export default function NewQuote() {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadingDeal, setLoadingDeal] = useState(false);
+  const [searchParams] = useSearchParams();
+  const dealId = searchParams.get('dealId');
 
   useEffect(() => {
     base44.auth.me()
       .then((u) => { if (u?.full_name) setSalesRepName(u.full_name); })
       .catch(() => {});
   }, []);
+
+  // Pre-fill from an ARM deal if a dealId is present in the URL
+  useEffect(() => {
+    if (!dealId) return;
+    let cancelled = false;
+    setLoadingDeal(true);
+    base44.functions.invoke('getDeal', { deal_id: dealId })
+      .then((res) => {
+        if (cancelled) return;
+        const d = res.data?.deal;
+        if (!d) return;
+        if (d.account_id) setCustomerId(d.account_id);
+        if (d.account_name) setCustomerName(d.account_name);
+        if (d.contact_id) setContactId(d.contact_id);
+        if (d.contact_name) setCustomerContact(d.contact_name);
+        if (d.contact_email) setCustomerEmail(d.contact_email);
+        // Use deal title + product as a starting RFQ/reference note
+        if (d.title) setCustomerRfqNumber((prev) => prev || d.title);
+        if (d.product || d.value) {
+          const parts = [];
+          if (d.product) parts.push(`Product: ${d.product}`);
+          if (d.value != null) parts.push(`Value: $${Number(d.value).toFixed(2)}`);
+          setNotes((prev) => prev || parts.join('\n'));
+        }
+      })
+      .catch((err) => {
+        toast({ title: 'Could not load deal', description: err.message, variant: 'destructive' });
+      })
+      .finally(() => { if (!cancelled) setLoadingDeal(false); });
+    return () => { cancelled = true; };
+  }, [dealId]);
 
   const handleCustomerSelect = (id) => {
     const c = customers.find((x) => x.id === id);
@@ -117,6 +151,11 @@ export default function NewQuote() {
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <h1 className="text-2xl font-bold">New Quote</h1>
+        {loadingDeal && (
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading deal from ARM...
+          </div>
+        )}
       </div>
 
       <Card className="p-6 space-y-4">
