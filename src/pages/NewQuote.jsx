@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
+import { generateQuoteNumber } from '@/lib/quoteNumber';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -29,6 +30,12 @@ export default function NewQuote() {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    base44.auth.me()
+      .then((u) => { if (u?.full_name) setSalesRepName(u.full_name); })
+      .catch(() => {});
+  }, []);
 
   const handleCustomerSelect = (id) => {
     const c = customers.find((x) => x.id === id);
@@ -74,7 +81,7 @@ export default function NewQuote() {
     }
     setSaving(true);
     try {
-      const quoteNumber = `Q-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${String(Date.now()).slice(-4)}`;
+      const quoteNumber = await generateQuoteNumber(customerName);
 
       const quote = await base44.entities.Quote.create({
         quote_number: quoteNumber,
