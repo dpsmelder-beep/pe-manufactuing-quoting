@@ -34,6 +34,7 @@ export default function QuoteDetail() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
+  const [viewMode, setViewMode] = useState('cad');
   const [uploadingDocs, setUploadingDocs] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
@@ -276,35 +277,87 @@ export default function QuoteDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         <div className="lg:col-span-3 space-y-4">
           <Card className="p-4">
-            <h2 className="font-semibold mb-3 flex items-center gap-2">
-              <Box className="w-5 h-5" /> 3D Model Viewer
-            </h2>
-            {quote.files && quote.files.length > 0 ? (
-              <>
-                <div className="flex gap-2 mb-3 flex-wrap">
-                  {quote.files.map((f, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setSelectedFile(f)}
-                      className={cn(
-                        'px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-1',
-                        selectedFile?.url === f.url ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      )}
-                    >
-                      <FileText className="w-3 h-3" />
-                      {f.name}
-                    </button>
-                  ))}
+            <div className="flex gap-1 mb-3 border-b border-slate-200">
+              <button
+                onClick={() => setViewMode('cad')}
+                className={cn(
+                  'px-4 py-2 text-sm font-medium transition border-b-2 -mb-px flex items-center gap-2',
+                  viewMode === 'cad' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'
+                )}
+              >
+                <Box className="w-4 h-4" /> 3D Model
+              </button>
+              <button
+                onClick={() => setViewMode('pdf')}
+                className={cn(
+                  'px-4 py-2 text-sm font-medium transition border-b-2 -mb-px flex items-center gap-2',
+                  viewMode === 'pdf' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'
+                )}
+              >
+                <FileText className="w-4 h-4" /> PDF Document
+              </button>
+            </div>
+
+            {viewMode === 'cad' ? (
+              quote.files && quote.files.length > 0 ? (
+                <>
+                  <div className="flex gap-2 mb-3 flex-wrap">
+                    {quote.files.map((f, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setSelectedFile(f)}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-1',
+                          selectedFile?.url === f.url ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        )}
+                      >
+                        <FileText className="w-3 h-3" />
+                        {f.name}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="h-[500px]">
+                    {selectedFile && <CADViewer fileUrl={selectedFile.url} fileName={selectedFile.name} />}
+                  </div>
+                </>
+              ) : (
+                <div className="h-[400px] flex flex-col items-center justify-center text-slate-400">
+                  <Box className="w-12 h-12 mb-2 opacity-30" />
+                  <p>No CAD files uploaded for this quote.</p>
                 </div>
-                <div className="h-[500px]">
-                  {selectedFile && <CADViewer fileUrl={selectedFile.url} fileName={selectedFile.name} />}
-                </div>
-              </>
+              )
             ) : (
-              <div className="h-[400px] flex flex-col items-center justify-center text-slate-400">
-                <Box className="w-12 h-12 mb-2 opacity-30" />
-                <p>No CAD files uploaded for this quote.</p>
-              </div>
+              documents.length > 0 ? (
+                <>
+                  <div className="flex gap-2 mb-3 flex-wrap">
+                    {documents.map((d, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setSelectedDoc(d)}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-1',
+                          selectedDoc?.url === d.url ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        )}
+                      >
+                        <FileText className="w-3 h-3" />
+                        {d.name}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="h-[500px] overflow-y-auto bg-slate-50 rounded-lg p-3">
+                    {selectedDoc && (
+                      <ErrorBoundary fallback={<p className="text-sm text-slate-500 text-center py-4">PDF preview unavailable. <a href={selectedDoc.url} target="_blank" rel="noreferrer" className="text-primary underline">Open in new tab</a></p>}>
+                        <PdfViewer url={selectedDoc.url} height={480} />
+                      </ErrorBoundary>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="h-[400px] flex flex-col items-center justify-center text-slate-400">
+                  <FileText className="w-12 h-12 mb-2 opacity-30" />
+                  <p>No PDF documents uploaded for this quote.</p>
+                </div>
+              )
             )}
           </Card>
 
@@ -384,7 +437,7 @@ export default function QuoteDetail() {
                   {documents.map((d, i) => (
                     <div key={i} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg">
                       <button
-                        onClick={() => setSelectedDoc(d)}
+                        onClick={() => { setSelectedDoc(d); setViewMode('pdf'); }}
                         className={cn(
                           'text-sm font-medium truncate underline-offset-2 flex items-center gap-2 text-left flex-1',
                           selectedDoc?.url === d.url ? 'text-primary underline' : 'text-slate-700 hover:text-primary hover:underline'
@@ -399,13 +452,6 @@ export default function QuoteDetail() {
                     </div>
                   ))}
                 </div>
-                {selectedDoc && (
-                  <div className="mt-3">
-                    <ErrorBoundary fallback={<p className="text-sm text-slate-500 text-center py-4">PDF preview unavailable. <a href={selectedDoc.url} target="_blank" rel="noreferrer" className="text-primary underline">Open in new tab</a></p>}>
-                      <PdfViewer url={selectedDoc.url} />
-                    </ErrorBoundary>
-                  </div>
-                )}
               </>
             )}
           </Card>
