@@ -14,6 +14,7 @@ import LineItemsTable from '@/components/LineItemsTable';
 import ReviewNotesSection from '@/components/ReviewNotesSection';
 import { ArrowLeft, Save, Send, FileText, Box, Loader2, Download } from 'lucide-react';
 import PdfViewer from '@/components/PdfViewer';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { generateQuotePdf } from '@/lib/generateQuotePdf';
 import { cn } from '@/lib/utils';
 import { useCustomers, customerLabel, useContacts, contactName } from '@/hooks/useCustomers';
@@ -400,7 +401,9 @@ export default function QuoteDetail() {
                 </div>
                 {selectedDoc && (
                   <div className="mt-3">
-                    <PdfViewer url={selectedDoc.url} />
+                    <ErrorBoundary fallback={<p className="text-sm text-slate-500 text-center py-4">PDF preview unavailable. <a href={selectedDoc.url} target="_blank" rel="noreferrer" className="text-primary underline">Open in new tab</a></p>}>
+                      <PdfViewer url={selectedDoc.url} />
+                    </ErrorBoundary>
                   </div>
                 )}
               </>
