@@ -63,6 +63,7 @@ export default function PdfViewer({ url, height = 600 }) {
     return () => {
       cancelled = true;
       renderTasks.forEach((t) => t.cancel?.());
+      if (containerRef.current) containerRef.current.innerHTML = '';
     };
   }, [url]);
 
@@ -71,20 +72,19 @@ export default function PdfViewer({ url, height = 600 }) {
       <div
         ref={containerRef}
         className="overflow-y-auto bg-slate-50 rounded-lg p-3 flex flex-col items-center gap-3"
-        style={{ maxHeight: `${height}px` }}
-      >
-        {loading && (
-          <div className="flex items-center justify-center py-12 text-slate-500 w-full">
-            <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading PDF...
-          </div>
-        )}
-        {error && !loading && (
-          <div className="flex flex-col items-center justify-center py-12 text-slate-500 w-full">
-            <FileText className="w-10 h-10 mb-2 opacity-40" />
-            <p>Could not load PDF preview. <a href={url} target="_blank" rel="noreferrer" className="text-primary underline">Open in new tab</a></p>
-          </div>
-        )}
-      </div>
+        style={{ maxHeight: `${height}px`, minHeight: loading || error ? '120px' : undefined }}
+      />
+      {loading && (
+        <div className="flex items-center justify-center py-12 text-slate-500 w-full">
+          <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading PDF...
+        </div>
+      )}
+      {error && !loading && (
+        <div className="flex flex-col items-center justify-center py-12 text-slate-500 w-full">
+          <FileText className="w-10 h-10 mb-2 opacity-40" />
+          <p>Could not load PDF preview. <a href={url} target="_blank" rel="noreferrer" className="text-primary underline">Open in new tab</a></p>
+        </div>
+      )}
       {!loading && !error && pageCount > 0 && (
         <p className="text-xs text-slate-400 mt-1 text-center">{pageCount} page(s)</p>
       )}
