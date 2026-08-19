@@ -26,8 +26,10 @@ export default function PdfViewer({ url, height = 600 }) {
         if (cancelled) return;
         setPageCount(pdf.numPages);
 
-        const containerWidth = container?.clientWidth || 600;
-        const targetWidth = Math.min(containerWidth, 800);
+        // Use the parent's width (always visible) — the scroll container may be hidden.
+        const measured = container?.parentElement?.clientWidth || container?.clientWidth || 600;
+        const targetWidth = Math.min(measured, 800);
+        if (targetWidth <= 0) throw new Error('No width');
 
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
           const page = await pdf.getPage(pageNum);
@@ -67,22 +69,23 @@ export default function PdfViewer({ url, height = 600 }) {
 
   return (
     <div>
-      {loading && (
-        <div className="flex items-center justify-center py-12 text-slate-500">
-          <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading PDF...
-        </div>
-      )}
-      {error && !loading && (
-        <div className="flex flex-col items-center justify-center py-12 text-slate-500">
-          <FileText className="w-10 h-10 mb-2 opacity-40" />
-          <p>Could not load PDF preview. <a href={url} target="_blank" rel="noreferrer" className="text-primary underline">Open in new tab</a></p>
-        </div>
-      )}
       <div
         ref={containerRef}
-        className={`overflow-y-auto bg-slate-50 rounded-lg p-3 ${loading || error ? 'hidden' : 'block'}`}
+        className="overflow-y-auto bg-slate-50 rounded-lg p-3 flex flex-col items-center gap-3"
         style={{ maxHeight: `${height}px` }}
-      />
+      >
+        {loading && (
+          <div className="flex items-center justify-center py-12 text-slate-500 w-full">
+            <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading PDF...
+          </div>
+        )}
+        {error && !loading && (
+          <div className="flex flex-col items-center justify-center py-12 text-slate-500 w-full">
+            <FileText className="w-10 h-10 mb-2 opacity-40" />
+            <p>Could not load PDF preview. <a href={url} target="_blank" rel="noreferrer" className="text-primary underline">Open in new tab</a></p>
+          </div>
+        )}
+      </div>
       {!loading && !error && pageCount > 0 && (
         <p className="text-xs text-slate-400 mt-1 text-center">{pageCount} page(s)</p>
       )}
