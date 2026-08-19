@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
-import PdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker';
 import { FileText, Loader2 } from 'lucide-react';
 
-pdfjsLib.GlobalWorkerOptions.workerPort = new PdfjsWorker();
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 export default function PdfThumbnail({ url, className }) {
   const canvasRef = useRef(null);
