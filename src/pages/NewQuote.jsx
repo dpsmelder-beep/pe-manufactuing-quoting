@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Upload, ArrowLeft, Loader2, FileText } from 'lucide-react';
+import PdfThumbnail from '@/components/PdfThumbnail';
 import { useCustomers, customerLabel, useContacts, contactName } from '@/hooks/useCustomers';
 
 export default function NewQuote() {
@@ -262,11 +263,16 @@ export default function NewQuote() {
         {documents.length > 0 && (
           <div className="space-y-2">
             {documents.map((d, i) => (
-              <div key={i} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg">
-                <a href={d.url} target="_blank" rel="noreferrer" className="text-sm font-medium truncate text-primary underline-offset-2 hover:underline flex items-center gap-2">
-                  <FileText className="w-4 h-4" /> {d.name}
+              <div key={i} className="flex items-start gap-3 bg-slate-50 px-3 py-3 rounded-lg">
+                <a href={d.url} target="_blank" rel="noreferrer" className="shrink-0">
+                  <PdfThumbnail url={d.url} />
                 </a>
-                <Button variant="ghost" size="sm" onClick={() => removeDoc(i)}>Remove</Button>
+                <div className="flex-1 flex items-start justify-between gap-2 min-w-0">
+                  <a href={d.url} target="_blank" rel="noreferrer" className="text-sm font-medium truncate text-primary underline-offset-2 hover:underline flex items-center gap-2">
+                    <FileText className="w-4 h-4 shrink-0" /> <span className="truncate">{d.name}</span>
+                  </a>
+                  <Button variant="ghost" size="sm" onClick={() => removeDoc(i)}>Remove</Button>
+                </div>
               </div>
             ))}
           </div>
