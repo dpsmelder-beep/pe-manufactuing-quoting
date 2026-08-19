@@ -28,6 +28,7 @@ export default function PdfTextExtraction({ url }) {
   const [items, setItems] = useState([]);
   const [rawCount, setRawCount] = useState(0);
   const [pageCount, setPageCount] = useState(0);
+  const [pageStats, setPageStats] = useState([]); // [{ page, charCount }]
   const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -44,26 +45,35 @@ export default function PdfTextExtraction({ url }) {
       setItems([]);
       setRawCount(0);
       setPageCount(0);
+      setPageStats([]);
       try {
         const pdf = await pdfjsLib.getDocument({ url }).promise;
         if (cancelled) return;
         setPageCount(pdf.numPages);
         const all = [];
         let raw = 0;
+        const stats = [];
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
           const page = await pdf.getPage(pageNum);
           if (cancelled) return;
           // includeMarkedContent keeps structure markers; we still filter display.
           const content = await page.getTextContent();
           if (cancelled) return;
+          let pageChars = 0;
           content.items.forEach((it) => {
             raw++;
-            if (it.str && it.str.trim()) all.push(buildItem(pageNum, it));
+            const s = it.str ?? '';
+            if (s.trim()) {
+              all.push(buildItem(pageNum, it));
+              pageChars += s.trim().length;
+            }
           });
+          stats.push({ page: pageNum, charCount: pageChars });
         }
         if (!cancelled) {
           setRawCount(raw);
           setItems(all);
+          setPageStats(stats);
         }
       } catch (err) {
         if (!cancelled) {
@@ -115,12 +125,43 @@ export default function PdfTextExtraction({ url }) {
       </button>
 
       {open && (
-        <div className="p-4 space-y-3">
-          {loading && (
-            <div className="flex items-center gap-2 text-sm text-slate-500 py-4">
-              <Loader2 className="w-4 h-4 animate-spin" /> Extracting text from PDF…
-            </div>
-          )}
+      <div className="p-4 space-y-3">
+      {loading && (
+        <div className="flex items-center gap-2 text-sm text-slate-500 py-4">
+          <Loader2 className="w-4 h-4 animate-spin" /> Extracting text from PDF…
+        </div>
+      )}
+
+      {!loading && !error && pageStats.length > 0 && (
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600">
+            Per-page embedded text check
+          </div>
+          <div className="divide-y divide-slate-100">
+            {pageStats.map((s) => {
+              const ocr = s.charCount < 20;
+              return (
+                <div key={s.page} className="flex items-center justify-between px-3 py-2 text-xs">
+                  <span className="text-slate-600">Page {s.page}</span>
+                  <span className="flex items-center gap-3">
+                    <span className="font-mono text-slate-500">{s.charCount} chars</span>
+                    <span
+                      className={cn(
+                        'px-2 py-0.5 rounded-full font-medium',
+                        ocr
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-emerald-100 text-emerald-700'
+                      )}
+                    >
+                      {ocr ? 'OCR Required' : 'Embedded Text'}
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
           {error && !loading && (
             <div className="flex flex-col items-center justify-center py-8 text-slate-500">
               <FileText className="w-10 h-10 mb-2 opacity-40" />
