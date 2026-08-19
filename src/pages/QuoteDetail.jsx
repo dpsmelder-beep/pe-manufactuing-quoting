@@ -36,6 +36,7 @@ export default function QuoteDetail() {
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [viewMode, setViewMode] = useState('cad');
   const [uploadingDocs, setUploadingDocs] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -213,6 +214,40 @@ export default function QuoteDetail() {
     await base44.entities.Quote.update(id, { documents: updated });
   };
 
+  const handleFileUpload = async (e) => {
+    const selected = Array.from(e.target.files);
+    if (!selected.length) return;
+    setUploadingFiles(true);
+    try {
+      const uploaded = [];
+      for (const file of selected) {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        uploaded.push({ url: file_url, name: file.name });
+      }
+      const q = await base44.entities.Quote.get(id);
+      const existing = q.files || [];
+      const updated = [...existing, ...uploaded];
+      await base44.entities.Quote.update(id, { files: updated });
+      setQuote({ ...q, files: updated });
+      if (!selectedFile && updated.length > 0) setSelectedFile(updated[0]);
+      toast({ title: 'CAD files uploaded', description: `${uploaded.length} file(s) added` });
+    } catch (err) {
+      toast({ title: 'Upload failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+
+  const removeFile = async (index) => {
+    const q = await base44.entities.Quote.get(id);
+    const updated = (q.files || []).filter((_, i) => i !== index);
+    await base44.entities.Quote.update(id, { files: updated });
+    setQuote({ ...q, files: updated });
+    if (selectedFile && updated.findIndex((f) => f.url === selectedFile.url) === -1) {
+      setSelectedFile(updated[0] || null);
+    }
+  };
+
   const handleAddNote = (text) => {
     const note = { text, author: 'Team Member', date: new Date().toISOString() };
     const updated = [...reviewNotes, note];
@@ -299,33 +334,51 @@ export default function QuoteDetail() {
             </div>
 
             {viewMode === 'cad' ? (
-              quote.files && quote.files.length > 0 ? (
-                <>
-                  <div className="flex gap-2 mb-3 flex-wrap">
-                    {quote.files.map((f, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setSelectedFile(f)}
-                        className={cn(
-                          'px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-1',
-                          selectedFile?.url === f.url ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        )}
-                      >
-                        <FileText className="w-3 h-3" />
-                        {f.name}
-                      </button>
-                    ))}
+              <>
+                <label className="border-2 border-dashed border-slate-300 rounded-lg p-3 mb-3 flex items-center justify-center gap-2 cursor-pointer hover:border-slate-400 transition">
+                  <Box className="w-5 h-5 text-slate-400" />
+                  <span className="text-sm text-slate-500">
+                    {uploadingFiles ? 'Uploading...' : 'Add STEP / IGES / BREP file'}
+                  </span>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".step,.stp,.iges,.igs,.brep"
+                    className="hidden"
+                    onChange={handleFileUpload}
+                    disabled={uploadingFiles}
+                  />
+                </label>
+                {quote.files && quote.files.length > 0 ? (
+                  <>
+                    <div className="flex gap-2 mb-3 flex-wrap">
+                      {quote.files.map((f, i) => (
+                        <div key={i} className="flex items-center gap-1">
+                          <button
+                            onClick={() => setSelectedFile(f)}
+                            className={cn(
+                              'px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-1',
+                              selectedFile?.url === f.url ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            )}
+                          >
+                            <FileText className="w-3 h-3" />
+                            {f.name}
+                          </button>
+                          <Button variant="ghost" size="sm" onClick={() => removeFile(i)} className="h-7 px-2 text-xs">Remove</Button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="h-[500px]">
+                      {selectedFile && <CADViewer fileUrl={selectedFile.url} fileName={selectedFile.name} />}
+                    </div>
+                  </>
+                ) : (
+                  <div className="h-[300px] flex flex-col items-center justify-center text-slate-400">
+                    <Box className="w-12 h-12 mb-2 opacity-30" />
+                    <p>No CAD files uploaded for this quote.</p>
                   </div>
-                  <div className="h-[500px]">
-                    {selectedFile && <CADViewer fileUrl={selectedFile.url} fileName={selectedFile.name} />}
-                  </div>
-                </>
-              ) : (
-                <div className="h-[400px] flex flex-col items-center justify-center text-slate-400">
-                  <Box className="w-12 h-12 mb-2 opacity-30" />
-                  <p>No CAD files uploaded for this quote.</p>
-                </div>
-              )
+                )}
+              </>
             ) : (
               documents.length > 0 ? (
                 <>
