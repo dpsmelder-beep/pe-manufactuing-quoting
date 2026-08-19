@@ -422,6 +422,44 @@ export default function QuoteDetail() {
               <span>${total.toFixed(2)}</span>
             </div>
           </Card>
+
+          <Card className="p-4 space-y-3">
+            <h2 className="font-semibold flex items-center gap-2"><FileText className="w-5 h-5" /> Reference Documents (PDF)</h2>
+            <label className="border-2 border-dashed border-slate-300 rounded-lg p-5 flex flex-col items-center justify-center cursor-pointer hover:border-slate-400 transition">
+              <FileText className="w-6 h-6 text-slate-400 mb-1" />
+              <span className="text-sm text-slate-500">Click to upload PDF drawings or specs</span>
+              <span className="text-xs text-slate-400 mt-1">.pdf</span>
+              <input type="file" multiple accept="application/pdf,.pdf" className="hidden" onChange={handleDocUpload} disabled={uploadingDocs} />
+            </label>
+            {uploadingDocs && (
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <Loader2 className="w-4 h-4 animate-spin" /> Uploading...
+              </div>
+            )}
+            {documents.length > 0 && (
+              <>
+                <div className="space-y-2">
+                  {documents.map((d, i) => (
+                    <div key={i} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg">
+                      <button
+                        onClick={() => { setSelectedDoc(d); setViewMode('pdf'); }}
+                        className={cn(
+                          'text-sm font-medium truncate underline-offset-2 flex items-center gap-2 text-left flex-1',
+                          selectedDoc?.url === d.url ? 'text-primary underline' : 'text-slate-700 hover:text-primary hover:underline'
+                        )}
+                      >
+                        <FileText className="w-4 h-4 shrink-0" /> <span className="truncate">{d.name}</span>
+                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <a href={d.url} target="_blank" rel="noreferrer" className="text-xs text-slate-500 hover:text-primary px-2">Open</a>
+                        <Button variant="ghost" size="sm" onClick={() => removeDoc(i)}>Remove</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </Card>
         </div>
 
         <div className="lg:col-span-2 space-y-4">
@@ -469,44 +507,6 @@ export default function QuoteDetail() {
               <Label className="text-xs">Sales Terms</Label>
               <Textarea value={salesTerms} onChange={(e) => setSalesTerms(e.target.value)} rows={3} />
             </div>
-          </Card>
-
-          <Card className="p-4 space-y-3">
-            <h2 className="font-semibold flex items-center gap-2"><FileText className="w-5 h-5" /> Reference Documents (PDF)</h2>
-            <label className="border-2 border-dashed border-slate-300 rounded-lg p-5 flex flex-col items-center justify-center cursor-pointer hover:border-slate-400 transition">
-              <FileText className="w-6 h-6 text-slate-400 mb-1" />
-              <span className="text-sm text-slate-500">Click to upload PDF drawings or specs</span>
-              <span className="text-xs text-slate-400 mt-1">.pdf</span>
-              <input type="file" multiple accept="application/pdf,.pdf" className="hidden" onChange={handleDocUpload} disabled={uploadingDocs} />
-            </label>
-            {uploadingDocs && (
-              <div className="flex items-center gap-2 text-sm text-slate-500">
-                <Loader2 className="w-4 h-4 animate-spin" /> Uploading...
-              </div>
-            )}
-            {documents.length > 0 && (
-              <>
-                <div className="space-y-2">
-                  {documents.map((d, i) => (
-                    <div key={i} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg">
-                      <button
-                        onClick={() => { setSelectedDoc(d); setViewMode('pdf'); }}
-                        className={cn(
-                          'text-sm font-medium truncate underline-offset-2 flex items-center gap-2 text-left flex-1',
-                          selectedDoc?.url === d.url ? 'text-primary underline' : 'text-slate-700 hover:text-primary hover:underline'
-                        )}
-                      >
-                        <FileText className="w-4 h-4 shrink-0" /> <span className="truncate">{d.name}</span>
-                      </button>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <a href={d.url} target="_blank" rel="noreferrer" className="text-xs text-slate-500 hover:text-primary px-2">Open</a>
-                        <Button variant="ghost" size="sm" onClick={() => removeDoc(i)}>Remove</Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
           </Card>
         </div>
       </div>
