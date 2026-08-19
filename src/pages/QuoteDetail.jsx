@@ -13,6 +13,7 @@ import CADViewer from '@/components/CADViewer';
 import LineItemsTable from '@/components/LineItemsTable';
 import ReviewNotesSection from '@/components/ReviewNotesSection';
 import { ArrowLeft, Save, Send, FileText, Box, Loader2, Download } from 'lucide-react';
+import PdfViewer from '@/components/PdfViewer';
 import { generateQuotePdf } from '@/lib/generateQuotePdf';
 import { cn } from '@/lib/utils';
 import { useCustomers, customerLabel, useContacts, contactName } from '@/hooks/useCustomers';
@@ -31,6 +32,7 @@ export default function QuoteDetail() {
   const [status, setStatus] = useState('new');
   const [selectedFile, setSelectedFile] = useState(null);
   const [documents, setDocuments] = useState([]);
+  const [selectedDoc, setSelectedDoc] = useState(null);
   const [uploadingDocs, setUploadingDocs] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
@@ -84,6 +86,7 @@ export default function QuoteDetail() {
       setQuoteNumber(q.quote_number || '');
       setSalesTerms(q.sales_terms || '');
       setDocuments(q.documents || []);
+      setSelectedDoc(q.documents && q.documents.length > 0 ? q.documents[0] : null);
       if (q.files && q.files.length > 0) setSelectedFile(q.files[0]);
     } catch (err) {
       toast({ title: 'Error', description: 'Failed to load quote', variant: 'destructive' });
@@ -375,16 +378,32 @@ export default function QuoteDetail() {
               </div>
             )}
             {documents.length > 0 && (
-              <div className="space-y-2">
-                {documents.map((d, i) => (
-                  <div key={i} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg">
-                    <a href={d.url} target="_blank" rel="noreferrer" className="text-sm font-medium truncate text-primary underline-offset-2 hover:underline flex items-center gap-2">
-                      <FileText className="w-4 h-4" /> {d.name}
-                    </a>
-                    <Button variant="ghost" size="sm" onClick={() => removeDoc(i)}>Remove</Button>
+              <>
+                <div className="space-y-2">
+                  {documents.map((d, i) => (
+                    <div key={i} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg">
+                      <button
+                        onClick={() => setSelectedDoc(d)}
+                        className={cn(
+                          'text-sm font-medium truncate underline-offset-2 flex items-center gap-2 text-left flex-1',
+                          selectedDoc?.url === d.url ? 'text-primary underline' : 'text-slate-700 hover:text-primary hover:underline'
+                        )}
+                      >
+                        <FileText className="w-4 h-4 shrink-0" /> <span className="truncate">{d.name}</span>
+                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <a href={d.url} target="_blank" rel="noreferrer" className="text-xs text-slate-500 hover:text-primary px-2">Open</a>
+                        <Button variant="ghost" size="sm" onClick={() => removeDoc(i)}>Remove</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {selectedDoc && (
+                  <div className="mt-3">
+                    <PdfViewer url={selectedDoc.url} />
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </Card>
         </div>
