@@ -19,7 +19,7 @@ export default function Layout() {
           <img
             src="https://media.base44.com/images/public/6a8369086a548f4cfcb1ce33/c29719924_PE-Logo-clear.gif"
             alt="PE Manufacturing"
-            className="w-full h-auto object-contain"
+            className="w-full h-auto object-fill"
           />
         </div>
         <nav className="flex-1 p-3 space-y-1">
