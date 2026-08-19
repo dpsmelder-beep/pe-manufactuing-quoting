@@ -26,6 +26,9 @@ function buildItem(pageNum, item) {
 
 export default function PdfTextExtraction({ url }) {
   const [items, setItems] = useState([]);
+  const [rawCount, setRawCount] = useState(0);
+  const [pageCount, setPageCount] = useState(0);
+  const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [open, setOpen] = useState(false);
@@ -37,23 +40,36 @@ export default function PdfTextExtraction({ url }) {
     const run = async () => {
       setLoading(true);
       setError(false);
+      setLoadError(null);
       setItems([]);
+      setRawCount(0);
+      setPageCount(0);
       try {
         const pdf = await pdfjsLib.getDocument({ url }).promise;
         if (cancelled) return;
+        setPageCount(pdf.numPages);
         const all = [];
+        let raw = 0;
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
           const page = await pdf.getPage(pageNum);
           if (cancelled) return;
+          // includeMarkedContent keeps structure markers; we still filter display.
           const content = await page.getTextContent();
           if (cancelled) return;
           content.items.forEach((it) => {
+            raw++;
             if (it.str && it.str.trim()) all.push(buildItem(pageNum, it));
           });
         }
-        if (!cancelled) setItems(all);
+        if (!cancelled) {
+          setRawCount(raw);
+          setItems(all);
+        }
       } catch (err) {
-        if (!cancelled) setError(true);
+        if (!cancelled) {
+          setError(true);
+          setLoadError(err?.message || String(err));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -91,7 +107,7 @@ export default function PdfTextExtraction({ url }) {
           Drawing Extraction Test
           {!loading && !error && (
             <span className="text-xs text-slate-400 font-normal">
-              ({items.length} text items found)
+              ({items.length} text item{items.length === 1 ? '' : 's'} found · {rawCount} raw · {pageCount} page{pageCount === 1 ? '' : 's'})
             </span>
           )}
         </span>
@@ -109,13 +125,19 @@ export default function PdfTextExtraction({ url }) {
             <div className="flex flex-col items-center justify-center py-8 text-slate-500">
               <FileText className="w-10 h-10 mb-2 opacity-40" />
               <p className="text-sm">Could not extract text from this PDF.</p>
-              <p className="text-xs text-slate-400">It may be a scanned image with no embedded text layer.</p>
+              <p className="text-xs text-slate-400">{loadError || 'PDF.js failed to load the document.'}</p>
             </div>
           )}
 
           {!loading && !error && items.length === 0 && (
-            <div className="text-center py-8 text-slate-500 text-sm">
-              No embedded text was found in this PDF.
+            <div className="py-6 px-4 bg-slate-50 rounded-lg space-y-2 text-sm text-slate-600">
+              <p className="font-medium text-slate-700">No embedded text was found in this PDF.</p>
+              <p className="text-xs text-slate-500">
+                PDF.js returned <span className="font-mono">{rawCount}</span> raw text item(s) across <span className="font-mono">{pageCount}</span> page(s), but none contained actual text content.
+              </p>
+              <p className="text-xs text-slate-500">
+                This usually means the drawing text is stored as <span className="font-medium">vector outlines/paths</span> (common with CAD-exported PDFs) or as a <span className="font-medium">rasterized scanned image</span>, rather than a real embedded text layer. PDF.js <span className="font-mono">getTextContent()</span> can only read actual text operators, not drawn shapes or pixels — so OCR would be required to recover the text.
+              </p>
             </div>
           )}
 
