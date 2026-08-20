@@ -142,13 +142,19 @@ export default function OcrPreprocessingTest({ url }) {
                   <div key={v.key} className="p-3 space-y-2">
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <div>
-                        <div className="text-sm font-medium text-slate-800">{v.label}</div>
+                        <div className="text-sm font-medium text-slate-800 flex items-center gap-2 flex-wrap">
+                          {v.label}
+                          <span className="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium text-[10px]">{v.ocrMethod}</span>
+                        </div>
                         <div className="text-[11px] text-slate-500">{v.method}</div>
                       </div>
                       <div className="flex items-center gap-2 text-[11px]">
                         <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">{v.wordCount} words</span>
                         <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
                           {v.confidence != null ? `${Math.round(v.confidence)}% conf` : '— conf'}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
+                          {v.processingMs != null ? `${v.processingMs} ms` : '— ms'}
                         </span>
                       </div>
                     </div>

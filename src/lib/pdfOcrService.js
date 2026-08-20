@@ -130,28 +130,35 @@ export async function runOcrVersions(sourceCanvas, pageNum, { lang = 'eng', onSt
   const results = [];
   for (const v of versions) {
     onStatus?.(`OCR ${v.label}`);
+    const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
     try {
       const { words, text, confidence } = await ocrCanvas(v.canvas, pageNum, {
         scale: HIGH_OCR_SCALE,
         lang,
         onStatus,
       });
+      const processingMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
       results.push({
         key: v.key,
         label: v.label,
         method: v.method,
+        ocrMethod: 'Whole Page OCR',
         text,
         confidence,
         wordCount: words.length,
+        processingMs,
       });
     } catch (err) {
+      const processingMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
       results.push({
         key: v.key,
         label: v.label,
         method: v.method,
+        ocrMethod: 'Whole Page OCR',
         text: '',
         confidence: null,
         wordCount: 0,
+        processingMs,
         error: err?.message || String(err),
       });
     }
