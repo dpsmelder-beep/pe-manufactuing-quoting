@@ -17,6 +17,7 @@ import PdfViewer from '@/components/PdfViewer';
 import PdfTextExtraction from '@/components/PdfTextExtraction';
 import OcrPreprocessingTest from '@/components/OcrPreprocessingTest';
 import TextRegionDetection from '@/components/TextRegionDetection';
+import RegionOcrTest from '@/components/RegionOcrTest';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { generateQuotePdf } from '@/lib/generateQuotePdf';
 import { cn } from '@/lib/utils';
@@ -409,6 +410,7 @@ export default function QuoteDetail() {
                     <PdfTextExtraction url={selectedDoc.url} />
                     <OcrPreprocessingTest url={selectedDoc.url} />
                     <TextRegionDetection url={selectedDoc.url} />
+                    <RegionOcrTest url={selectedDoc.url} />
                   </div>
                 </>
               ) : (

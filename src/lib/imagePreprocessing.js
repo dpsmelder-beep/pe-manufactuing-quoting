@@ -14,6 +14,19 @@ export function cloneCanvas(source) {
   return c;
 }
 
+/** Rotate a canvas by whole degrees. 90 / -90 / 180 swap width and height as needed. */
+export function rotateCanvas(source, deg) {
+  const swap = deg % 180 !== 0;
+  const c = document.createElement('canvas');
+  c.width = swap ? source.height : source.width;
+  c.height = swap ? source.width : source.height;
+  const ctx = c.getContext('2d');
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.rotate((deg * Math.PI) / 180);
+  ctx.drawImage(source, -source.width / 2, -source.height / 2);
+  return c;
+}
+
 /** Return a scaled copy of a canvas. */
 export function scaleCanvas(source, scale) {
   const c = document.createElement('canvas');
