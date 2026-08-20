@@ -3,7 +3,7 @@ import { Loader2, ChevronDown, ChevronRight, ClipboardCheck } from 'lucide-react
 import { loadPdf, renderPageToCanvas, HIGH_OCR_SCALE } from '@/lib/pdfOcrService';
 import { detectCharacterTextRegions, cropRegionFromSource } from '@/lib/characterTextDetector';
 import { growRegion, padRegionBbox } from '@/lib/textRegionNeighborGrowth';
-import { ocrRegionOrientations } from '@/lib/regionOcrService';
+import { getProvider, PROVIDERS, DEFAULT_PROVIDER_ID } from '@/lib/ocrProviders';
 
 const MAX_CANVAS_DIM = 3000;
 const SEARCH_FACTOR = 3; // matches the Text Region Neighbor Growth Test default
@@ -26,6 +26,7 @@ export default function NeighborGrownRegionOcrTest({ url }) {
   const [loadError, setLoadError] = useState(null);
   const [status, setStatus] = useState('');
   const [maxRegions, setMaxRegions] = useState(50);
+  const [engineId, setEngineId] = useState(DEFAULT_PROVIDER_ID);
   const [baseReady, setBaseReady] = useState(false);
   const [pages, setPages] = useState([]); // { pageNum }
   const [results, setResults] = useState([]); // per page { pageNum, regions: [{idx, cropDataUrl, text, confidence, orientation, variants}] }
@@ -110,14 +111,20 @@ export default function NeighborGrownRegionOcrTest({ url }) {
         setStatus(`OCR ${k + 1} / ${slice.length} (page ${item.pageNum}, region ${item.ri + 1})`);
         try {
           const crop = cropRegionFromSource(item.canvas, item.region);
-          const { selected } = await ocrRegionOrientations(crop.canvas, (o) => !cancelled && setStatus(`OCR ${k + 1} / ${slice.length} · ${o}`));
+          const provider = getProvider(engineId);
+          const res = await provider.analyzeRegion(crop.canvas, {
+            pageNumber: item.pageNum,
+            regionBbox: { x: item.region.x, y: item.region.y, w: item.region.w, h: item.region.h },
+            onStatus: (o) => !cancelled && setStatus(`OCR ${k + 1} / ${slice.length} · ${o}`),
+          });
           if (cancelled) return;
           out[item.pi].regions.push({
             idx: item.ri,
             cropDataUrl: crop.canvas.toDataURL(),
-            text: selected.text,
-            confidence: selected.confidence,
-            orientation: selected.orientation,
+            text: res.text,
+            confidence: res.confidence,
+            orientation: res.orientation,
+            source: res.items[0]?.source || engineId,
           });
           setResults([...out]);
         } catch (err) {
@@ -126,7 +133,8 @@ export default function NeighborGrownRegionOcrTest({ url }) {
             cropDataUrl: '',
             text: '',
             confidence: 0,
-            orientation: 'Original',
+            orientation: 0,
+            source: engineId,
             error: err?.message || String(err),
           });
           setResults([...out]);
@@ -137,7 +145,7 @@ export default function NeighborGrownRegionOcrTest({ url }) {
     run().catch((err) => { if (!cancelled) { setError(true); setLoadError(err?.message || String(err)); } })
       .finally(() => { if (!cancelled) setOcrRunning(false); });
     return () => { cancelled = true; };
-  }, [baseReady, maxRegions]);
+  }, [baseReady, maxRegions, engineId]);
 
   // Summary from manual reviews — crop classification + OCR classification (independent).
   const allEntries = results.flatMap((p) => p.regions.map((r) => ({ ...r, pageNum: p.pageNum, id: `${p.pageNum}-${r.idx}` })));
@@ -204,6 +212,18 @@ export default function NeighborGrownRegionOcrTest({ url }) {
                 onChange={(e) => setMaxRegions(Math.max(1, Math.min(500, parseInt(e.target.value || '0', 10))))}
                 className="w-20 border border-input rounded px-2 py-1"
               />
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-slate-500">OCR engine:</span>
+              <select
+                value={engineId}
+                onChange={(e) => setEngineId(e.target.value)}
+                className="border border-input rounded px-2 py-1 bg-white"
+              >
+                {PROVIDERS.map((p) => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
+                ))}
+              </select>
             </label>
           </div>
 
@@ -321,8 +341,9 @@ export default function NeighborGrownRegionOcrTest({ url }) {
                                 {r.text || <span className="text-slate-300">(no text)</span>}
                               </div>
                               <div className="flex gap-3 text-[10px] text-slate-500">
-                                <span>orientation: <b className="text-slate-700">{r.orientation}</b></span>
-                                <span>confidence: <b className="text-slate-700">{r.confidence}</b></span>
+                                <span>orientation: <b className="text-slate-700">{r.orientation}°</b></span>
+                                <span>confidence: <b className="text-slate-700">{Math.round((r.confidence || 0) * 100)}</b></span>
+                                <span>engine: <b className="text-slate-700">{r.source}</b></span>
                                 {r.error && <span className="text-red-500">error: {r.error}</span>}
                               </div>
                               <div className="flex gap-1.5 flex-wrap">
