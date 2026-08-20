@@ -33,6 +33,7 @@
 // no other part of the app changes.
 
 import tesseractLegacy from './tesseractLegacy';
+import paddleOcr from './paddleOcr';
 
 export const DEFAULT_PROVIDER_ID = 'tesseract';
 
@@ -44,10 +45,16 @@ export const PROVIDERS = [
     label: 'Tesseract.js — Legacy',
     description: 'Legacy in-browser OCR engine. Used for testing only — not accurate enough for production.',
   },
+  {
+    id: 'paddleocr',
+    label: 'PaddleOCR (PP-OCRv5)',
+    description: 'Experimental in-browser OCR engine via ONNX Runtime Web. Stronger printed-text accuracy; runs locally.',
+  },
 ];
 
 const REGISTRY = {
   tesseract: tesseractLegacy,
+  paddleocr: paddleOcr,
 };
 
 export function getProvider(id) {
