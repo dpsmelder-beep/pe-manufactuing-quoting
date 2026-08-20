@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
+import { recognize as tesseractRecognize } from 'tesseract.js';
 import { Loader2, FileText, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +31,8 @@ export default function PdfTextExtraction({ url }) {
   const [pageCount, setPageCount] = useState(0);
   const [pageStats, setPageStats] = useState([]); // [{ page, charCount }]
   const [ocrRenders, setOcrRenders] = useState([]); // [{ page, status, message }]
+  const [ocrStatus, setOcrStatus] = useState(''); // live status string
+  const [ocrResults, setOcrResults] = useState([]); // [{ page, text, confidence, error? }]
   const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -48,6 +51,8 @@ export default function PdfTextExtraction({ url }) {
       setPageCount(0);
       setPageStats([]);
       setOcrRenders([]);
+      setOcrStatus('');
+      setOcrResults([]);
       try {
         const pdf = await pdfjsLib.getDocument({ url }).promise;
         if (cancelled) return;
@@ -78,8 +83,7 @@ export default function PdfTextExtraction({ url }) {
           setPageStats(stats);
 
           // Render OCR-required pages to an off-screen canvas (white bg, scale 3.0).
-          // Not displayed; not OCR'd yet — render confirmation only.
-          const renders = [];
+          const renders = []; // [{ page, canvas }]
           for (const s of stats) {
             if (s.charCount >= 20) continue;
             try {
@@ -94,12 +98,46 @@ export default function PdfTextExtraction({ url }) {
               ctx.fillRect(0, 0, canvas.width, canvas.height);
               await page.render({ canvasContext: ctx, viewport }).promise;
               if (cancelled) return;
-              renders.push({ page: s.page, status: 'success', message: `Page ${s.page} rendered successfully for OCR` });
+              renders.push({ page: s.page, canvas });
             } catch (err) {
-              renders.push({ page: s.page, status: 'error', message: `Page ${s.page} render failed: ${err?.message || String(err)}` });
+              renders.push({ page: s.page, error: err?.message || String(err) });
             }
           }
-          if (!cancelled) setOcrRenders(renders);
+          if (!cancelled) {
+            setOcrRenders(
+              renders.map((r) =>
+                r.error
+                  ? { page: r.page, status: 'error', message: `Page ${r.page} render failed: ${r.error}` }
+                  : { page: r.page, status: 'success', message: `Page ${r.page} rendered successfully for OCR` }
+              )
+            );
+            if (!cancelled) setLoading(false); // panels visible while OCR runs
+
+            // Run Tesseract.js OCR on each rendered canvas (English only).
+            const results = [];
+            for (const r of renders) {
+              if (cancelled) return;
+              if (r.error) {
+                results.push({ page: r.page, error: r.error });
+                setOcrResults([...results]);
+                continue;
+              }
+              setOcrStatus('Preparing page for OCR');
+              setOcrStatus(`Reading page ${r.page}`);
+              try {
+                const { data } = await tesseractRecognize(r.canvas, 'eng', {
+                  logger: (m) => {
+                    if (m?.status === 'recognizing text') setOcrStatus('Recognizing text');
+                  },
+                });
+                results.push({ page: r.page, text: data.text || '', confidence: data.confidence });
+              } catch (err) {
+                results.push({ page: r.page, error: err?.message || String(err) });
+              }
+              setOcrResults([...results]);
+            }
+            if (!cancelled) setOcrStatus('OCR complete');
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -208,6 +246,46 @@ export default function PdfTextExtraction({ url }) {
                 <span className={cn('font-mono', r.status === 'success' ? 'text-emerald-700' : 'text-red-600')}>
                   {r.message}
                 </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && ocrRenders.length > 0 && (
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600">
+            Tesseract.js OCR (English)
+          </div>
+          {ocrStatus && (
+            <div className="px-3 py-2 flex items-center gap-2 text-xs text-slate-600 border-b border-slate-100">
+              {ocrStatus !== 'OCR complete' && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />}
+              <span className="font-mono">{ocrStatus}</span>
+            </div>
+          )}
+          {ocrResults.length === 0 && !ocrStatus && (
+            <div className="px-3 py-3 text-xs text-slate-400">No OCR-required pages.</div>
+          )}
+          <div className="divide-y divide-slate-100">
+            {ocrResults.map((res) => (
+              <div key={res.page} className="px-3 py-3 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-mono px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">Page {res.page}</span>
+                  {res.error ? (
+                    <span className="text-red-600 font-mono">error</span>
+                  ) : (
+                    <span className="font-mono text-slate-500">
+                      confidence {res.confidence != null ? `${Math.round(res.confidence)}%` : 'n/a'}
+                    </span>
+                  )}
+                </div>
+                {res.error ? (
+                  <p className="text-xs text-red-600">{res.error}</p>
+                ) : (
+                  <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-slate-50 rounded p-2 text-slate-800 max-h-64 overflow-y-auto">
+                    {res.text || '(no text recognized)'}
+                  </pre>
+                )}
               </div>
             ))}
           </div>
