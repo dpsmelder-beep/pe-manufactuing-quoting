@@ -552,6 +552,98 @@ export function parseItem(item) {
   };
 }
 
+/**
+ * Count decimal places from the original text. Number() would drop trailing
+ * zeros, so ".480" and ".48" would look identical without this.
+ */
+function decimalPlaces(text) {
+  const m = String(text).match(/\.(\d+)/);
+  return m ? m[1].length : 0;
+}
+
+/** Bounding box enclosing two boxes. */
+function mergeBbox(a, b) {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  const right = Math.max(a.x + a.width, b.x + b.width);
+  const bottom = Math.max(a.y + a.height, b.y + b.height);
+  return { x, y, width: right - x, height: bottom - y };
+}
+
+/**
+ * Test whether two plain-decimal dimensions could be a stacked limit-dimension
+ * pair. All requirements must hold; if bbox coordinates are missing, never
+ * infer the relationship:
+ *  - same page
+ *  - significant horizontal overlap (similar X position)
+ *  - vertically stacked: gap between 0.5× and 3× the average line height
+ *  - compatible number formats: both have decimals and the same precision
+ */
+function possibleLimitPair(a, b) {
+  if (!a.bbox || !b.bbox) return null;
+  if ((a.page ?? null) !== (b.page ?? null)) return null;
+
+  const ba = a.bbox;
+  const bb = b.bbox;
+  const minW = Math.min(ba.width, bb.width);
+  if (minW <= 0) return null;
+  const overlap = Math.max(0, Math.min(ba.x + ba.width, bb.x + bb.width) - Math.max(ba.x, bb.x));
+  if (overlap / minW < 0.5) return null; // not aligned in X
+
+  const avgH = (ba.height + bb.height) / 2;
+  if (avgH <= 0) return null;
+  const gap = Math.abs((ba.y + ba.height / 2) - (bb.y + bb.height / 2));
+  if (gap < 0.5 * avgH || gap > 3 * avgH) return null; // same line, or too far apart
+
+  const da = decimalPlaces(a.original_text);
+  const db = decimalPlaces(b.original_text);
+  if (da === 0 || da !== db) return null; // incompatible precision
+
+  return {
+    category: 'dimensions',
+    type: 'possible_limit_dimension',
+    upper_limit: Math.max(a.nominal, b.nominal),
+    lower_limit: Math.min(a.nominal, b.nominal),
+    unit: a.unit ?? b.unit ?? null,
+    status: 'needs_confirmation',
+    members: [a.original_text, b.original_text],
+    bbox: mergeBbox(ba, bb),
+    page: a.page ?? null,
+    confidence: Math.min(a.confidence ?? 1, b.confidence ?? 1),
+    source: a.source ?? b.source ?? null,
+  };
+}
+
+/**
+ * Preliminary, spatially-driven detection of possible limit dimensions from
+ * already-parsed plain-decimal linear dimensions. Each dimension participates
+ * in at most one pair. No inference is made when bbox coordinates are absent.
+ */
+function detectPossibleLimitDimensions(dimEntries) {
+  const candidates = dimEntries.filter(
+    (e) =>
+      e.type === 'linear_dimension' &&
+      e.tolerance_type === 'none' &&
+      Number.isFinite(e.nominal) &&
+      e.bbox
+  );
+  const used = new Set();
+  const pairs = [];
+  for (let i = 0; i < candidates.length; i++) {
+    if (used.has(i)) continue;
+    for (let j = i + 1; j < candidates.length; j++) {
+      if (used.has(j)) continue;
+      const pair = possibleLimitPair(candidates[i], candidates[j]);
+      if (!pair) continue;
+      pairs.push(pair);
+      used.add(i);
+      used.add(j);
+      break;
+    }
+  }
+  return pairs;
+}
+
 export const CATEGORIES = [
   'dimensions',
   'radii',
@@ -561,6 +653,7 @@ export const CATEGORIES = [
   'finishes',
   'notes',
   'unclassified',
+  'possible_limit_dimensions',
 ];
 
 /**
@@ -568,7 +661,8 @@ export const CATEGORIES = [
  * data grouped by category.
  * @param {Array} items - standardized items from the PDF.js / PaddleOCR pipeline
  * @returns {{ dimensions:[], radii:[], diameters:[], quantities:[],
- *            materials:[], finishes:[], notes:[], unclassified:[] }}
+ *            materials:[], finishes:[], notes:[], unclassified:[],
+ *            possible_limit_dimensions:[] }}
  */
 export function parseDrawingItems(items) {
   const out = {
@@ -580,11 +674,13 @@ export function parseDrawingItems(items) {
     finishes: [],
     notes: [],
     unclassified: [],
+    possible_limit_dimensions: [],
   };
   for (const item of items || []) {
     const entry = parseItem(item);
     const bucket = out[entry.category] || out.unclassified;
     bucket.push(entry);
   }
+  out.possible_limit_dimensions = detectPossibleLimitDimensions(out.dimensions);
   return out;
 }
