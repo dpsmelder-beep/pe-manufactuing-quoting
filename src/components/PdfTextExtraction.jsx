@@ -33,6 +33,7 @@ export default function PdfTextExtraction({ url }) {
   const [ocrRenders, setOcrRenders] = useState([]); // [{ page, status, message }]
   const [ocrStatus, setOcrStatus] = useState(''); // live status string
   const [ocrResults, setOcrResults] = useState([]); // [{ page, text, confidence, error? }]
+  const [ocrWords, setOcrWords] = useState([]); // [{ page, text, x, y, width, height, confidence }]
   const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -53,6 +54,7 @@ export default function PdfTextExtraction({ url }) {
       setOcrRenders([]);
       setOcrStatus('');
       setOcrResults([]);
+      setOcrWords([]);
       try {
         const pdf = await pdfjsLib.getDocument({ url }).promise;
         if (cancelled) return;
@@ -131,6 +133,45 @@ export default function PdfTextExtraction({ url }) {
                   },
                 });
                 results.push({ page: r.page, text: data.text || '', confidence: data.confidence });
+                // Word-level location capture. Tesseract bboxes are in the
+                // off-screen canvas pixel space (rendered at scale 3.0). Convert
+                // back to PDF user-space units (scale 1) and flip Y from canvas
+                // top-origin to PDF bottom-origin.
+                const scale = 3.0;
+                const canvasH = r.canvas.height;
+                // Tesseract.js v5 may nest words inside blocks/paragraphs/lines
+                // rather than exposing a top-level data.words array. Flatten.
+                const rawWords = (data.words && data.words.length)
+                  ? data.words
+                  : (data.blocks || []).flatMap((blk) =>
+                      (blk.paragraphs || []).flatMap((p) =>
+                        (p.lines || []).flatMap((l) => l.words || [])
+                      )
+                    );
+                const words = (rawWords || []).map((w) => {
+                  const b = w.bbox || {};
+                  const x0 = Number.isFinite(b.x0) ? b.x0 : 0;
+                  const y0 = Number.isFinite(b.y0) ? b.y0 : 0;
+                  const x1 = Number.isFinite(b.x1) ? b.x1 : x0;
+                  const y1 = Number.isFinite(b.y1) ? b.y1 : y0;
+                  const wPdf = (x1 - x0) / scale;
+                  const hPdf = (y1 - y0) / scale;
+                  const xPdf = x0 / scale;
+                  const yPdf = (canvasH - y1) / scale;
+                  const round = (n) => Math.round(n * 100) / 100;
+                  return {
+                    page: r.page,
+                    text: w.text || '',
+                    x: round(xPdf),
+                    y: round(yPdf),
+                    width: round(wPdf),
+                    height: round(hPdf),
+                    confidence: typeof w.confidence === 'number' ? Math.round(w.confidence * 100) / 100 : null,
+                  };
+                });
+                if (!cancelled && words.length) {
+                  setOcrWords((prev) => [...prev, ...words]);
+                }
               } catch (err) {
                 results.push({ page: r.page, error: err?.message || String(err) });
               }
@@ -289,10 +330,46 @@ export default function PdfTextExtraction({ url }) {
               </div>
             ))}
           </div>
-        </div>
-      )}
+          </div>
+          )}
 
-      {error && !loading && (
+          {!loading && !error && ocrWords.length > 0 && (
+          <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600">
+           OCR word locations ({ocrWords.length} item{ocrWords.length === 1 ? '' : 's'})
+          </div>
+          <div className="max-h-80 overflow-auto">
+           <table className="w-full text-xs">
+             <thead className="bg-slate-100 sticky top-0">
+               <tr className="text-left text-slate-600">
+                 <th className="px-2 py-1.5">Text</th>
+                 <th className="px-2 py-1.5">Page</th>
+                 <th className="px-2 py-1.5">X</th>
+                 <th className="px-2 py-1.5">Y</th>
+                 <th className="px-2 py-1.5">Width</th>
+                 <th className="px-2 py-1.5">Height</th>
+                 <th className="px-2 py-1.5">Confidence</th>
+               </tr>
+             </thead>
+             <tbody>
+               {ocrWords.map((w, i) => (
+                 <tr key={i} className={i % 2 ? 'bg-slate-50' : 'bg-white'}>
+                   <td className="px-2 py-1 font-mono whitespace-pre-wrap break-words max-w-xs">{w.text || '\u00A0'}</td>
+                   <td className="px-2 py-1">{w.page}</td>
+                   <td className="px-2 py-1">{w.x}</td>
+                   <td className="px-2 py-1">{w.y}</td>
+                   <td className="px-2 py-1">{w.width}</td>
+                   <td className="px-2 py-1">{w.height}</td>
+                   <td className="px-2 py-1 font-mono">{w.confidence != null ? `${w.confidence}%` : '—'}</td>
+                 </tr>
+               ))}
+             </tbody>
+           </table>
+          </div>
+          </div>
+          )}
+
+          {error && !loading && (
             <div className="flex flex-col items-center justify-center py-8 text-slate-500">
               <FileText className="w-10 h-10 mb-2 opacity-40" />
               <p className="text-sm">Could not extract text from this PDF.</p>
