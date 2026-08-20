@@ -283,6 +283,112 @@ export function expandRegionDirectional(region, bounds) {
   return { x, y, w: right - x, h: bottom - y, orientation: horizontal ? 'horizontal' : 'vertical' };
 }
 
+// ---- Region merging (diagnostic stage before OCR) ----
+//
+// The row splitter may break one engineering callout into several adjacent
+// regions. These helpers propose merges for pairs that look like they belong
+// to the same callout, without discarding the originals.
+
+function overlapRatio(aStart, aLen, bStart, bLen) {
+  const aEnd = aStart + aLen;
+  const bEnd = bStart + bLen;
+  const overlap = Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
+  const denom = Math.min(aLen, bLen);
+  return denom > 0 ? overlap / denom : 0;
+}
+
+function axisGap(a, b, axis) {
+  // Smallest positive extent gap between a and b along `axis` ('x' or 'y').
+  const aStart = axis === 'x' ? a.x : a.y;
+  const aLen = axis === 'x' ? a.w : a.h;
+  const bStart = axis === 'x' ? b.x : b.y;
+  const bLen = axis === 'x' ? b.w : b.h;
+  const left = aStart <= bStart ? a : b;
+  const right = aStart <= bStart ? b : a;
+  const lEnd = (axis === 'x' ? left.x : left.y) + (axis === 'x' ? left.w : left.h);
+  const rStart = axis === 'x' ? right.x : right.y;
+  return rStart - lEnd;
+}
+
+/**
+ * Decide whether two regions are merge candidates.
+ * Horizontal text: same baseline (vertical overlap), similar heights, and a
+ *   horizontal gap < ~1.5× the average height.
+ * Vertical text: same column (horizontal overlap), similar widths, and a
+ *   vertical gap < ~1.5× the average width.
+ */
+function mergeable(a, b, opts = {}) {
+  const avgH = (a.h + b.h) / 2;
+  const avgW = (a.w + b.w) / 2;
+  const hGap = axisGap(a, b, 'x');
+  const vGap = axisGap(a, b, 'y');
+  const vOverlap = overlapRatio(a.y, a.h, b.y, b.h);
+  const hOverlap = overlapRatio(a.x, a.w, b.x, b.w);
+  const hRatio = Math.min(a.h, b.h) / Math.max(1, Math.max(a.h, b.h));
+  const wRatio = Math.min(a.w, b.w) / Math.max(1, Math.max(a.w, b.w));
+  const gapHF = opts.horizontalGapFactor ?? 1.5;
+  const gapVF = opts.verticalGapFactor ?? 1.5;
+  const overlapMin = opts.overlapMin ?? 0.5;
+  const ratioMin = opts.ratioMin ?? 0.7;
+  const horizMerge =
+    vOverlap >= overlapMin &&
+    hRatio >= ratioMin &&
+    hGap < gapHF * avgH &&
+    hGap >= -0.05 * avgH; // allow tiny bbox overlap, reject heavy stacking
+  const vertMerge =
+    hOverlap >= overlapMin &&
+    wRatio >= ratioMin &&
+    vGap < gapVF * avgW &&
+    vGap >= -0.05 * avgW;
+  return horizMerge || vertMerge;
+}
+
+/**
+ * Union-find merge of detected regions into proposed merged regions.
+ * Original regions are never modified.
+ *
+ * @returns {{ merged: object[], groups: number[][] }}
+ *   merged[i] = { x, y, w, h, sourceIndices } (bbox of group i)
+ *   groups[i] = array of original region indices in group i
+ */
+export function mergeRegions(regions, opts = {}) {
+  const n = regions.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (x) => {
+    let r = x;
+    while (parent[r] !== r) { parent[r] = parent[parent[r]]; r = parent[r]; }
+    return r;
+  };
+  const union = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[ra] = rb;
+  };
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (mergeable(regions[i], regions[j], opts)) union(i, j);
+    }
+  }
+  const groupsMap = {};
+  for (let i = 0; i < n; i++) {
+    const r = find(i);
+    (groupsMap[r] = groupsMap[r] || []).push(i);
+  }
+  const groups = Object.values(groupsMap);
+  const merged = groups.map((group) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const idx of group) {
+      const r = regions[idx];
+      minX = Math.min(minX, r.x);
+      minY = Math.min(minY, r.y);
+      maxX = Math.max(maxX, r.x + r.w);
+      maxY = Math.max(maxY, r.y + r.h);
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY, sourceIndices: group };
+  });
+  return { merged, groups };
+}
+
 /** Crop an arbitrary bounding box (already in source-canvas coords) from a render. */
 export function cropBox(sourceCanvas, box) {
   const w = sourceCanvas.width;
