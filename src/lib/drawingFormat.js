@@ -97,6 +97,23 @@ export function mapSpecification(e) {
   };
 }
 
+export function mapThread(e) {
+  let thread;
+  if (e.thread_system === 'metric') {
+    thread = `M${e.nominal}${e.pitch != null ? ` x ${e.pitch}` : ''}`;
+  } else {
+    thread = `${e.nominal}-${e.threads_per_inch}${e.series ? ` ${e.series}` : ''}`;
+  }
+  return {
+    primary: thread,
+    tags: [
+      { label: 'Quantity', value: e.quantity != null ? e.quantity : '—' },
+      { label: 'Series', value: e.series || '—' },
+      { label: 'Class', value: e.class || '—' },
+    ],
+  };
+}
+
 export function mapUnclassified(e) {
   return {
     primary: e.spec || e.original_text || e.text || '—',

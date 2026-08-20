@@ -15,6 +15,7 @@ import {
   mapMaterial,
   mapFinish,
   mapSpecification,
+  mapThread,
   mapUnclassified,
 } from '@/lib/drawingFormat';
 
@@ -101,6 +102,7 @@ export default function DrawingAnalysis({ documents = [], selectedDoc, onSelectD
           {renderSection('Radii', parsed.radii, mapRadius)}
           {renderSection('Diameters', parsed.diameters, mapDiameter)}
           {renderSection('Feature Callouts', parsed.quantities, mapQuantity)}
+          {renderSection('Threads', parsed.threads, mapThread)}
           {renderSection('Possible Limit Dimensions', parsed.possible_limit_dimensions, mapLimit)}
           {renderSection('Material', parsed.materials, mapMaterial)}
           {renderSection('Finish / Specifications', finishSpec, (e) => (e.label ? mapSpecification(e) : mapFinish(e)))}

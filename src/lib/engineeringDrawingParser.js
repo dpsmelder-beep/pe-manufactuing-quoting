@@ -517,15 +517,72 @@ function matchNote(text) {
 // Priority order: specific callouts first, generic dimension last, notes before
 // falling through to unclassified.
 function matchThread(text) {
-  // Thread callouts have no dedicated bucket yet — route to unclassified with a
-  // `thread` type hint so they are not mistaken for linear dimensions (e.g. the
-  // "1.25" in "M8x1.25" or the "1/4" in "1/4-20 UNC").
-  const m =
-    text.match(/\bM\s*\d+(?:\.\d+)?\s*[xX]\s*\d+(?:\.\d+)?\b/) || // metric: M8x1.25
-    text.match(/\b\d+\/\d+-\d+\s*(?:UNC|UNF|UNEF|UNR)?\b/i) || // 1/4-20 [UNC]
-    text.match(/\b\d+-\d+\s*(?:UNC|UNF|UNEF|UNR)\b/i); // 10-32 UNF
-  if (!m) return null;
-  return { category: 'unclassified', value: null, unit: null, type: 'thread', spec: text.trim() };
+  const original = text.trim();
+  // Normalize whitespace; unify the multiplication sign to "X". Hyphens and
+  // the metric pitch separator X are matched with tolerant spacing below.
+  const norm = original.replace(/\s+/g, ' ').replace(/×/g, 'X').trim();
+  if (!norm) return null;
+
+  // Optional leading quantity marker: "<n>X" followed by the thread body.
+  // Safe to detect by position: inch threads start with a number-slash or
+  // number-dash and metric threads start with "M" — neither begins with
+  // digits-then-X except a quantity prefix.
+  let quantity = null;
+  let body = norm;
+  const qm = norm.match(/^(\d+)\s*[xX]\s*(?=\S)/);
+  if (qm) {
+    const rest = norm.slice(qm[0].length);
+    if (/^M\d/i.test(rest) || /^\d+\/\d+/.test(rest) || /^\d+\s*-/.test(rest)) {
+      quantity = Number(qm[1]);
+      body = rest;
+    }
+  }
+
+  // Inch thread: <nominal>-<tpi> <series>[-<class>]
+  //   nominal  : fraction ("1/4") or number ("10")
+  //   tpi      : integer threads-per-inch
+  //   series   : UNC | UNF | UNEF | UNR | UNS | UN
+  //   class    : optional, digit + A/B (1A,2B,3A,...)
+  const inch = body.match(
+    /^(\d+\/\d+|\d+)\s*-\s*(\d+)\s*(UNEF|UNF|UNR|UNS|UNC|UN)(?:\s*-\s*(\d[AB]))?$/
+  );
+  if (inch) {
+    const out = {
+      category: 'threads',
+      type: 'thread',
+      thread_system: 'inch',
+      nominal: inch[1],
+      threads_per_inch: Number(inch[2]),
+      series: inch[3],
+      original_text: original,
+    };
+    if (inch[4]) out.class = inch[4];
+    if (quantity != null) out.quantity = quantity;
+    return out;
+  }
+
+  // Metric thread: M<nominal> [xX] <pitch>[-<class>]
+  //   nominal : number (e.g. 6, 8, 2.5)
+  //   pitch   : decimal mm pitch
+  //   class   : optional, e.g. 6H, 6g, 5g6g, 4H5H
+  const metric = body.match(
+    /^M(\d+(?:\.\d+)?)\s*[xX]\s*(\d+(?:\.\d+)?)(?:\s*-\s*(\d{1,2}[A-Ha-h](?:\d{1,2}[A-Ha-h])?))?$/
+  );
+  if (metric) {
+    const out = {
+      category: 'threads',
+      type: 'thread',
+      thread_system: 'metric',
+      nominal: Number(metric[1]),
+      pitch: Number(metric[2]),
+      original_text: original,
+    };
+    if (metric[3]) out.class = metric[3];
+    if (quantity != null) out.quantity = quantity;
+    return out;
+  }
+
+  return null;
 }
 
 const MATCHERS = [
@@ -688,6 +745,7 @@ export const CATEGORIES = [
   'radii',
   'diameters',
   'quantities',
+  'threads',
   'materials',
   'finishes',
   'notes',
@@ -710,6 +768,7 @@ export function parseDrawingItems(items) {
     radii: [],
     diameters: [],
     quantities: [],
+    threads: [],
     materials: [],
     finishes: [],
     notes: [],
