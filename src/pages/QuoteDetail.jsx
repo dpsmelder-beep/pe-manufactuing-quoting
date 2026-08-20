@@ -23,6 +23,7 @@ import RegionMergingTest from '@/components/RegionMergingTest';
 import DrawingAnalysisTest from '@/components/DrawingAnalysisTest';
 import FinalOcrCropTest from '@/components/FinalOcrCropTest';
 import CharacterTextDetectorTest from '@/components/CharacterTextDetectorTest';
+import EngineeringLineRemovalTest from '@/components/EngineeringLineRemovalTest';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { generateQuotePdf } from '@/lib/generateQuotePdf';
 import { cn } from '@/lib/utils';
@@ -421,6 +422,7 @@ export default function QuoteDetail() {
                     <DrawingAnalysisTest url={selectedDoc.url} />
                     <FinalOcrCropTest url={selectedDoc.url} />
                     <CharacterTextDetectorTest url={selectedDoc.url} />
+                    <EngineeringLineRemovalTest url={selectedDoc.url} />
                   </div>
                 </>
               ) : (
