@@ -195,6 +195,86 @@ function matchRadius(text) {
   return out;
 }
 
+function matchFeatureCallout(text) {
+  const original = text.trim();
+  const norm = text.replace(/\s+/g, ' ').trim();
+
+  // A feature callout begins with a quantity marker "<n>X" (the X is the
+  // places/times marker, e.g. "4X"). The remainder optionally describes the
+  // repeated feature (a chamfer, diameter, radius, or bare size). Anything not
+  // recognized is preserved in `remainder` rather than discarded.
+  const m = norm.match(/^(\d+)\s*[xX]\b\s*(.*)$/);
+  if (!m) return null;
+
+  const out = {
+    category: 'quantities',
+    type: 'feature_callout',
+    quantity: Number(m[1]),
+    feature: null,
+    size: null,
+    angle: null,
+    original_text: original,
+  };
+
+  const rest = m[2].trim();
+  if (!rest) return out; // "2X" — quantity only, no feature
+
+  // Chamfer: "<size> X <angle>°"  (the X here is the size/angle separator; the
+  // degree symbol makes a chamfer confident).
+  let c = rest.match(new RegExp(`^${NUM}\\s*[xX]\\s*${NUM}\\s*°\\s*(.*)$`, 'i'));
+  if (c) {
+    out.feature = 'chamfer';
+    out.size = Number(c[1]);
+    out.angle = Number(c[2]);
+    const rem = c[3].trim();
+    if (rem) out.remainder = rem;
+    return out;
+  }
+
+  // Diameter feature: "Ø<size>" / "O<size>" / "DIA<size>" (O only in strong
+  // diameter context — see matchDiameter).
+  c = rest.match(new RegExp(`^(?:[Ø⌀ø]|DIA(?:\\.(?!\\d))?)\\s*${NUM}\\s*(${DIM_UNIT})?\\s*(.*)$`, 'i'));
+  let usedO = false;
+  if (!c) {
+    c = rest.match(new RegExp(`^O(?=\\s*\\d|\\s*\\.)\\s*${NUM}\\s*(${DIM_UNIT})?\\s*(.*)$`, 'i'));
+    if (c) usedO = true;
+  }
+  if (c) {
+    out.feature = 'diameter';
+    out.size = Number(c[1]);
+    if (c[2]) out.unit = normUnit(c[2]);
+    if (usedO) out.ocr_substitution = 'O→Ø';
+    const rem = c[3].trim();
+    if (rem) out.remainder = rem;
+    return out;
+  }
+
+  // Radius feature: "R<size>" / "SR<size>"
+  c = rest.match(new RegExp(`^(S?R)\\s*${NUM}\\s*(${DIM_UNIT})?\\s*(.*)$`, 'i'));
+  if (c) {
+    out.feature = /^s/i.test(c[1]) ? 'spherical_radius' : 'radius';
+    out.size = Number(c[2]);
+    if (c[3]) out.unit = normUnit(c[3]);
+    const rem = c[4].trim();
+    if (rem) out.remainder = rem;
+    return out;
+  }
+
+  // Plain size: "<size>" with no feature prefix
+  c = rest.match(new RegExp(`^${NUM}\\s*(${DIM_UNIT})?\\s*(.*)$`, 'i'));
+  if (c) {
+    out.size = Number(c[1]);
+    if (c[2]) out.unit = normUnit(c[2]);
+    const rem = c[3].trim();
+    if (rem) out.remainder = rem;
+    return out;
+  }
+
+  // Nothing recognized after the quantity marker — preserve the remainder.
+  out.remainder = rest;
+  return out;
+}
+
 function matchQuantity(text) {
   const m =
     text.match(/QTY\.?\s*[:=]?\s*(\d+)/i) ||
@@ -414,6 +494,7 @@ const MATCHERS = [
   matchDiameter,
   matchRadius,
   matchThread,
+  matchFeatureCallout,
   matchQuantity,
   matchFinish,
   matchMaterial,
