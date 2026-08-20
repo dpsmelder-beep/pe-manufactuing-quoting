@@ -245,9 +245,22 @@ function matchNote(text) {
 
 // Priority order: specific callouts first, generic dimension last, notes before
 // falling through to unclassified.
+function matchThread(text) {
+  // Thread callouts have no dedicated bucket yet — route to unclassified with a
+  // `thread` type hint so they are not mistaken for linear dimensions (e.g. the
+  // "1.25" in "M8x1.25" or the "1/4" in "1/4-20 UNC").
+  const m =
+    text.match(/\bM\s*\d+(?:\.\d+)?\s*[xX]\s*\d+(?:\.\d+)?\b/) || // metric: M8x1.25
+    text.match(/\b\d+\/\d+-\d+\s*(?:UNC|UNF|UNEF|UNR)?\b/i) || // 1/4-20 [UNC]
+    text.match(/\b\d+-\d+\s*(?:UNC|UNF|UNEF|UNR)\b/i); // 10-32 UNF
+  if (!m) return null;
+  return { category: 'unclassified', value: null, unit: null, type: 'thread', spec: text.trim() };
+}
+
 const MATCHERS = [
   matchDiameter,
   matchRadius,
+  matchThread,
   matchQuantity,
   matchFinish,
   matchMaterial,
