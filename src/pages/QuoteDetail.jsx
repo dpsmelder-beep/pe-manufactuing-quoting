@@ -14,20 +14,6 @@ import LineItemsTable from '@/components/LineItemsTable';
 import ReviewNotesSection from '@/components/ReviewNotesSection';
 import { ArrowLeft, Save, Send, FileText, Box, Loader2, Download } from 'lucide-react';
 import PdfViewer from '@/components/PdfViewer';
-import PdfTextExtraction from '@/components/PdfTextExtraction';
-import OcrPreprocessingTest from '@/components/OcrPreprocessingTest';
-import TextRegionDetection from '@/components/TextRegionDetection';
-import RegionOcrTest from '@/components/RegionOcrTest';
-import ExpansionOcrTest from '@/components/ExpansionOcrTest';
-import RegionMergingTest from '@/components/RegionMergingTest';
-import DrawingAnalysisTest from '@/components/DrawingAnalysisTest';
-import FinalOcrCropTest from '@/components/FinalOcrCropTest';
-import CharacterTextDetectorTest from '@/components/CharacterTextDetectorTest';
-import EngineeringLineRemovalTest from '@/components/EngineeringLineRemovalTest';
-import CleanedImageTextDetectionTest from '@/components/CleanedImageTextDetectionTest';
-import TextRegionNeighborGrowthTest from '@/components/TextRegionNeighborGrowthTest';
-import NeighborGrownRegionOcrTest from '@/components/NeighborGrownRegionOcrTest';
-import OcrEngineComparisonTest from '@/components/OcrEngineComparisonTest';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { generateQuotePdf } from '@/lib/generateQuotePdf';
 import { cn } from '@/lib/utils';
@@ -417,20 +403,6 @@ export default function QuoteDetail() {
                         <PdfViewer url={selectedDoc.url} height={480} />
                       </ErrorBoundary>
                     )}
-                    <PdfTextExtraction url={selectedDoc.url} />
-                    <OcrPreprocessingTest url={selectedDoc.url} />
-                    <TextRegionDetection url={selectedDoc.url} />
-                    <RegionOcrTest url={selectedDoc.url} />
-                    <ExpansionOcrTest url={selectedDoc.url} />
-                    <RegionMergingTest url={selectedDoc.url} />
-                    <DrawingAnalysisTest url={selectedDoc.url} />
-                    <FinalOcrCropTest url={selectedDoc.url} />
-                    <CharacterTextDetectorTest url={selectedDoc.url} />
-                    <EngineeringLineRemovalTest url={selectedDoc.url} />
-                    <CleanedImageTextDetectionTest url={selectedDoc.url} />
-                    <TextRegionNeighborGrowthTest url={selectedDoc.url} />
-                    <NeighborGrownRegionOcrTest url={selectedDoc.url} />
-                    <OcrEngineComparisonTest url={selectedDoc.url} />
                   </div>
                 </>
               ) : (
