@@ -146,7 +146,7 @@ export function detectTextRegions(sourceCanvas, opts = {}) {
   const maxCharW = w * (opts.maxCharWFrac ?? 0.12);
   const maxAspect = opts.maxAspect ?? 8;
   const minArea = minCharH * minCharW;
-  const keep = [];
+  let keep = [];
   for (const c of all) {
     if (c.h < minCharH || c.h > maxCharH) continue;
     if (c.w < minCharW || c.w > maxCharW) continue;
@@ -154,6 +154,16 @@ export function detectTextRegions(sourceCanvas, opts = {}) {
     if (aspect > maxAspect || aspect < 1 / maxAspect) continue; // reject long geometry lines
     if (c.area < minArea) continue; // reject specks
     keep.push(c);
+  }
+
+  // Exclude components that fall inside pre-detected drawing analysis regions
+  // (title block / large tabular structures) so the dimension detector ignores
+  // them. Originals are not modified; this only affects the dimension search.
+  if (opts.exclude && opts.exclude.length) {
+    const ex = opts.exclude;
+    keep = keep.filter(
+      (c) => !ex.some((e) => c.cx >= e.x && c.cx <= e.x + e.w && c.cy >= e.y && c.cy <= e.y + e.h)
+    );
   }
 
   // Estimate character size from survivors (medians).
@@ -459,4 +469,185 @@ export function drawRegionsOverlay(baseCanvas, regions, scale = 1) {
     ctx.strokeRect(x, y, w, h);
   }
   return out;
+}
+
+// ---- Drawing Analysis Regions (experimental exclusion stage) ----
+//
+// Before the dimension detector runs, we try to identify the outer drawing
+// border and large tabular structures (title block / tables) so their text can
+// be excluded from dimension-region detection. Pure canvas image processing;
+// the PDF is never modified and the originals are not discarded.
+
+function mergeLines(lines, posKey, extKeys, tol = 3) {
+  if (!lines.length) return [];
+  const sorted = [...lines].sort((a, b) => a[posKey] - b[posKey]);
+  const merged = [];
+  for (const ln of sorted) {
+    const last = merged[merged.length - 1];
+    if (
+      last &&
+      Math.abs(ln[posKey] - last[posKey]) <= tol &&
+      last[extKeys[1]] >= ln[extKeys[0]] &&
+      ln[extKeys[1]] >= last[extKeys[0]]
+    ) {
+      last[posKey] = (last[posKey] + ln[posKey]) / 2;
+      last[extKeys[0]] = Math.min(last[extKeys[0]], ln[extKeys[0]]);
+      last[extKeys[1]] = Math.max(last[extKeys[1]], ln[extKeys[1]]);
+    } else {
+      merged.push({ ...ln });
+    }
+  }
+  return merged;
+}
+
+function findLines(bin, w, h, opts = {}) {
+  const minHRun = Math.round(w * (opts.minHRunFrac ?? 0.3));
+  const minVRun = Math.round(h * (opts.minVRunFrac ?? 0.2));
+  const horiz = [];
+  for (let y = 0; y < h; y++) {
+    let runStart = -1;
+    for (let x = 0; x <= w; x++) {
+      const dark = x < w && bin[y * w + x] === 1;
+      if (dark && runStart < 0) runStart = x;
+      else if (!dark && runStart >= 0) {
+        if (x - runStart >= minHRun) horiz.push({ y, x1: runStart, x2: x });
+        runStart = -1;
+      }
+    }
+  }
+  const vert = [];
+  for (let x = 0; x < w; x++) {
+    let runStart = -1;
+    for (let y = 0; y <= h; y++) {
+      const dark = y < h && bin[y * w + x] === 1;
+      if (dark && runStart < 0) runStart = y;
+      else if (!dark && runStart >= 0) {
+        if (y - runStart >= minVRun) vert.push({ x, y1: runStart, y2: y });
+        runStart = -1;
+      }
+    }
+  }
+  return {
+    horiz: mergeLines(horiz, 'y', ['x1', 'x2']).slice(0, 80),
+    vert: mergeLines(vert, 'x', ['y1', 'y2']).slice(0, 80),
+  };
+}
+
+function rectsIoU(a, b) {
+  const x1 = Math.max(a.x, b.x);
+  const y1 = Math.max(a.y, b.y);
+  const x2 = Math.min(a.x + a.w, b.x + b.w);
+  const y2 = Math.min(a.y + a.h, b.y + b.h);
+  const iw = Math.max(0, x2 - x1);
+  const ih = Math.max(0, y2 - y1);
+  const inter = iw * ih;
+  return inter / (a.w * a.h + b.w * b.h - inter + 1e-9);
+}
+
+function dedupRects(rects) {
+  const sorted = [...rects].sort((a, b) => b.w * b.h - a.w * a.h);
+  const out = [];
+  for (const r of sorted) {
+    if (out.every((o) => rectsIoU(o, r) < 0.4)) out.push(r);
+  }
+  return out;
+}
+
+function findRectangles(horiz, vert, w, h) {
+  const rects = [];
+  for (let i = 0; i < horiz.length; i++) {
+    for (let j = i + 1; j < horiz.length; j++) {
+      const top = horiz[i];
+      const bot = horiz[j];
+      if (bot.y <= top.y) continue;
+      const x1 = Math.max(top.x1, bot.x1);
+      const x2 = Math.min(top.x2, bot.x2);
+      const spanW = x2 - x1;
+      if (spanW < w * 0.08) continue;
+      const yTol = Math.max(4, (bot.y - top.y) * 0.1);
+      const xTol = Math.max(4, spanW * 0.05);
+      for (const v1 of vert) {
+        if (Math.abs(v1.x - x1) > xTol) continue;
+        if (v1.y1 > top.y + yTol || v1.y2 < bot.y - yTol) continue;
+        for (const v2 of vert) {
+          if (v2.x <= v1.x) continue;
+          if (Math.abs(v2.x - x2) > xTol) continue;
+          if (v2.y1 > top.y + yTol || v2.y2 < bot.y - yTol) continue;
+          const rx = Math.min(v1.x, v2.x);
+          const ry = Math.min(top.y, bot.y);
+          rects.push({ x: rx, y: ry, w: Math.abs(v2.x - v1.x), h: Math.abs(bot.y - top.y) });
+        }
+      }
+    }
+  }
+  return dedupRects(rects);
+}
+
+/**
+ * Detect the drawing analysis regions: the outer border and large tabular
+ * structures (title block / tables) to exclude from dimension detection.
+ * The source canvas is not modified.
+ *
+ * @returns {{ border, tables, lines }}
+ *   border: { x, y, w, h } drawing analysis region (page bounds if no border)
+ *   tables: [{ id, x, y, w, h, type, enabled }]
+ */
+export function detectExclusionRegions(sourceCanvas, opts = {}) {
+  const w = sourceCanvas.width;
+  const h = sourceCanvas.height;
+  const work = document.createElement('canvas');
+  work.width = w;
+  work.height = h;
+  const ctx = work.getContext('2d');
+  ctx.drawImage(sourceCanvas, 0, 0);
+  const img = ctx.getImageData(0, 0, w, h);
+  toGrayscale(img);
+  applyContrast(img, opts.contrastFactor ?? 1.4);
+  threshold(img, opts.threshold ?? null);
+  ctx.putImageData(img, 0, 0);
+  const data = img.data;
+  const bin = new Uint8Array(w * h);
+  for (let i = 0, p = 0; i < data.length; i += 4, p++) bin[p] = data[i] < 128 ? 1 : 0;
+
+  const { horiz, vert } = findLines(bin, w, h, opts);
+
+  // Outer border from the widest horizontal + vertical lines.
+  const wideHoriz = horiz.filter((l) => l.x2 - l.x1 >= w * 0.5);
+  const wideVert = vert.filter((l) => l.y2 - l.y1 >= h * 0.5);
+  let border = null;
+  if (wideHoriz.length >= 2 && wideVert.length >= 2) {
+    const top = wideHoriz.reduce((m, l) => (l.y < m.y ? l : m));
+    const bottom = wideHoriz.reduce((m, l) => (l.y > m.y ? l : m));
+    const left = wideVert.reduce((m, l) => (l.x < m.x ? l : m));
+    const right = wideVert.reduce((m, l) => (l.x > m.x ? l : m));
+    border = {
+      x: Math.min(left.x, right.x),
+      y: Math.min(top.y, bottom.y),
+      w: Math.abs(right.x - left.x),
+      h: Math.abs(bottom.y - top.y),
+    };
+  }
+  if (!border) border = { x: 0, y: 0, w, h };
+
+  // Large rectangles formed by long horizontal + vertical lines.
+  const rects = findRectangles(horiz, vert, w, h);
+  const minArea = w * h * (opts.minTableAreaFrac ?? 0.005);
+  const tables = rects
+    .filter((r) => r.w * r.h >= minArea && r.w >= w * 0.08)
+    .map((r, i) => {
+      const cy = r.y + r.h / 2;
+      const type = cy > h * (opts.titleBlockYFrac ?? 0.6) ? 'title_block' : 'table';
+      return {
+        id: i + 1,
+        x: r.x,
+        y: r.y,
+        w: r.w,
+        h: r.h,
+        type,
+        enabled: type === 'title_block' || r.w * r.h > w * h * 0.02,
+      };
+    })
+    .slice(0, 20);
+
+  return { border, tables, lines: { horiz: horiz.length, vert: vert.length } };
 }
