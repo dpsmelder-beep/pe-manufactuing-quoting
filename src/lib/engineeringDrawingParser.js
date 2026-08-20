@@ -119,7 +119,11 @@ function matchQuantity(text) {
     text.match(/QTY\.?\s*[:=]?\s*(\d+)/i) ||
     text.match(/\(\s*(\d+)\s*(?:pcs|ea|pc|x|places|plces)\s*\)/i) ||
     text.match(/\b(\d+)\s*(?:pcs|ea|places|plces)\b/i) ||
-    text.match(/\bTOTAL\s*[:=]?\s*(\d+)/i);
+    text.match(/\bTOTAL\s*[:=]?\s*(\d+)/i) ||
+    // "4X" — count notation. Word boundary before the digits avoids matching
+    // the "8" inside a thread callout like "M8x1.25"; trailing boundary avoids
+    // matching when X is followed by more digits ("4X10").
+    text.match(/^\s*(\d+)\s*[xX]\b/);
   if (!m) return null;
   return { category: 'quantities', value: Number(m[1]), unit: 'pcs', type: 'quantity', spec: text.trim() };
 }
@@ -292,6 +296,7 @@ export function parseItem(item) {
     spec: text.trim(),
   };
   return {
+    category: parsed.category,
     text,
     page: item?.page ?? null,
     confidence: item?.confidence ?? null,
