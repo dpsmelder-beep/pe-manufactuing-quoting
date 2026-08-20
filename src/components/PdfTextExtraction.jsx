@@ -29,6 +29,7 @@ export default function PdfTextExtraction({ url }) {
   const [rawCount, setRawCount] = useState(0);
   const [pageCount, setPageCount] = useState(0);
   const [pageStats, setPageStats] = useState([]); // [{ page, charCount }]
+  const [ocrRenders, setOcrRenders] = useState([]); // [{ page, status, message }]
   const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -46,6 +47,7 @@ export default function PdfTextExtraction({ url }) {
       setRawCount(0);
       setPageCount(0);
       setPageStats([]);
+      setOcrRenders([]);
       try {
         const pdf = await pdfjsLib.getDocument({ url }).promise;
         if (cancelled) return;
@@ -74,6 +76,30 @@ export default function PdfTextExtraction({ url }) {
           setRawCount(raw);
           setItems(all);
           setPageStats(stats);
+
+          // Render OCR-required pages to an off-screen canvas (white bg, scale 3.0).
+          // Not displayed; not OCR'd yet — render confirmation only.
+          const renders = [];
+          for (const s of stats) {
+            if (s.charCount >= 20) continue;
+            try {
+              const page = await pdf.getPage(s.page);
+              if (cancelled) return;
+              const viewport = page.getViewport({ scale: 3.0 });
+              const canvas = document.createElement('canvas'); // off-screen, not attached
+              canvas.width = Math.ceil(viewport.width);
+              canvas.height = Math.ceil(viewport.height);
+              const ctx = canvas.getContext('2d');
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              await page.render({ canvasContext: ctx, viewport }).promise;
+              if (cancelled) return;
+              renders.push({ page: s.page, status: 'success', message: `Page ${s.page} rendered successfully for OCR` });
+            } catch (err) {
+              renders.push({ page: s.page, status: 'error', message: `Page ${s.page} render failed: ${err?.message || String(err)}` });
+            }
+          }
+          if (!cancelled) setOcrRenders(renders);
         }
       } catch (err) {
         if (!cancelled) {
@@ -162,7 +188,33 @@ export default function PdfTextExtraction({ url }) {
           </div>
         </div>
       )}
-          {error && !loading && (
+
+      {!loading && !error && ocrRenders.length > 0 && (
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600">
+            OCR render preview (off-screen, scale 3.0)
+          </div>
+          <div className="divide-y divide-slate-100">
+            {ocrRenders.map((r) => (
+              <div key={r.page} className="px-3 py-2 text-xs flex items-center gap-2">
+                <span
+                  className={cn(
+                    'px-1.5 py-0.5 rounded font-mono',
+                    r.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                  )}
+                >
+                  p{r.page}
+                </span>
+                <span className={cn('font-mono', r.status === 'success' ? 'text-emerald-700' : 'text-red-600')}>
+                  {r.message}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {error && !loading && (
             <div className="flex flex-col items-center justify-center py-8 text-slate-500">
               <FileText className="w-10 h-10 mb-2 opacity-40" />
               <p className="text-sm">Could not extract text from this PDF.</p>
