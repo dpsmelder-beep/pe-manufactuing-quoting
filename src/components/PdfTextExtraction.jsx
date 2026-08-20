@@ -3,37 +3,20 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { recognize as tesseractRecognize } from 'tesseract.js';
 import { Loader2, FileText, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { fromPdfText, fromOcrWord, flattenOcrWords } from '@/lib/extractedItem';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
-// One normalized record per text item found by PDF.js getTextContent().
-// y is the PDF user-space Y (origin bottom-left); we also store a screen Y
-// (top-left origin) to make the readable-order sort intuitive.
-function buildItem(pageNum, item) {
-  const tx = item.transform || [0, 0, 0, 0, 0, 0];
-  const x = tx[4];
-  const yPdf = tx[5];
-  const height = Math.abs(item.height || 0);
-  return {
-    page: pageNum,
-    text: item.str ?? '',
-    x: Math.round((Number.isFinite(x) ? x : 0) * 100) / 100,
-    y: Math.round((Number.isFinite(yPdf) ? yPdf : 0) * 100) / 100,
-    width: Math.round((Number.isFinite(item.width) ? item.width : 0) * 100) / 100,
-    height: Math.round(height * 100) / 100,
-    hasEOL: !!item.hasEOL,
-  };
-}
-
 export default function PdfTextExtraction({ url }) {
-  const [items, setItems] = useState([]);
+  // Single standardized list consumed by all downstream UI — both PDF.js
+  // embedded text and Tesseract.js OCR results land here in the same shape.
+  const [extractedItems, setExtractedItems] = useState([]);
   const [rawCount, setRawCount] = useState(0);
   const [pageCount, setPageCount] = useState(0);
   const [pageStats, setPageStats] = useState([]); // [{ page, charCount }]
   const [ocrRenders, setOcrRenders] = useState([]); // [{ page, status, message }]
   const [ocrStatus, setOcrStatus] = useState(''); // live status string
   const [ocrResults, setOcrResults] = useState([]); // [{ page, text, confidence, error? }]
-  const [ocrWords, setOcrWords] = useState([]); // [{ page, text, x, y, width, height, confidence }]
   const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -47,14 +30,13 @@ export default function PdfTextExtraction({ url }) {
       setLoading(true);
       setError(false);
       setLoadError(null);
-      setItems([]);
+      setExtractedItems([]);
       setRawCount(0);
       setPageCount(0);
       setPageStats([]);
       setOcrRenders([]);
       setOcrStatus('');
       setOcrResults([]);
-      setOcrWords([]);
       try {
         const pdf = await pdfjsLib.getDocument({ url }).promise;
         if (cancelled) return;
@@ -73,7 +55,7 @@ export default function PdfTextExtraction({ url }) {
             raw++;
             const s = it.str ?? '';
             if (s.trim()) {
-              all.push(buildItem(pageNum, it));
+              all.push(fromPdfText(pageNum, it));
               pageChars += s.trim().length;
             }
           });
@@ -81,7 +63,7 @@ export default function PdfTextExtraction({ url }) {
         }
         if (!cancelled) {
           setRawCount(raw);
-          setItems(all);
+          setExtractedItems(all);
           setPageStats(stats);
 
           // Render OCR-required pages to an off-screen canvas (white bg, scale 3.0).
@@ -133,44 +115,13 @@ export default function PdfTextExtraction({ url }) {
                   },
                 });
                 results.push({ page: r.page, text: data.text || '', confidence: data.confidence });
-                // Word-level location capture. Tesseract bboxes are in the
-                // off-screen canvas pixel space (rendered at scale 3.0). Convert
-                // back to PDF user-space units (scale 1) and flip Y from canvas
-                // top-origin to PDF bottom-origin.
+                // Word-level location capture, normalized to the standard item
+                // shape and merged into the single extractedItems list.
                 const scale = 3.0;
                 const canvasH = r.canvas.height;
-                // Tesseract.js v5 may nest words inside blocks/paragraphs/lines
-                // rather than exposing a top-level data.words array. Flatten.
-                const rawWords = (data.words && data.words.length)
-                  ? data.words
-                  : (data.blocks || []).flatMap((blk) =>
-                      (blk.paragraphs || []).flatMap((p) =>
-                        (p.lines || []).flatMap((l) => l.words || [])
-                      )
-                    );
-                const words = (rawWords || []).map((w) => {
-                  const b = w.bbox || {};
-                  const x0 = Number.isFinite(b.x0) ? b.x0 : 0;
-                  const y0 = Number.isFinite(b.y0) ? b.y0 : 0;
-                  const x1 = Number.isFinite(b.x1) ? b.x1 : x0;
-                  const y1 = Number.isFinite(b.y1) ? b.y1 : y0;
-                  const wPdf = (x1 - x0) / scale;
-                  const hPdf = (y1 - y0) / scale;
-                  const xPdf = x0 / scale;
-                  const yPdf = (canvasH - y1) / scale;
-                  const round = (n) => Math.round(n * 100) / 100;
-                  return {
-                    page: r.page,
-                    text: w.text || '',
-                    x: round(xPdf),
-                    y: round(yPdf),
-                    width: round(wPdf),
-                    height: round(hPdf),
-                    confidence: typeof w.confidence === 'number' ? Math.round(w.confidence * 100) / 100 : null,
-                  };
-                });
+                const words = flattenOcrWords(data).map((w) => fromOcrWord(r.page, w, scale, canvasH));
                 if (!cancelled && words.length) {
-                  setOcrWords((prev) => [...prev, ...words]);
+                  setExtractedItems((prev) => [...prev, ...words]);
                 }
               } catch (err) {
                 results.push({ page: r.page, error: err?.message || String(err) });
@@ -196,7 +147,7 @@ export default function PdfTextExtraction({ url }) {
   }, [url]);
 
   // Readable order: by page, then top-to-bottom (high PDF y first), then left-to-right.
-  const ordered = [...items].sort((a, b) =>
+  const ordered = [...extractedItems].sort((a, b) =>
     a.page !== b.page ? a.page - b.page : b.y - a.y || a.x - b.x
   );
 
@@ -222,7 +173,7 @@ export default function PdfTextExtraction({ url }) {
           Drawing Extraction Test
           {!loading && !error && (
             <span className="text-xs text-slate-400 font-normal">
-              ({items.length} text item{items.length === 1 ? '' : 's'} found · {rawCount} raw · {pageCount} page{pageCount === 1 ? '' : 's'})
+              ({extractedItems.length} text item{extractedItems.length === 1 ? '' : 's'} found · {rawCount} raw · {pageCount} page{pageCount === 1 ? '' : 's'})
             </span>
           )}
         </span>
@@ -333,42 +284,6 @@ export default function PdfTextExtraction({ url }) {
           </div>
           )}
 
-          {!loading && !error && ocrWords.length > 0 && (
-          <div className="rounded-lg border border-slate-200 overflow-hidden">
-          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600">
-           OCR word locations ({ocrWords.length} item{ocrWords.length === 1 ? '' : 's'})
-          </div>
-          <div className="max-h-80 overflow-auto">
-           <table className="w-full text-xs">
-             <thead className="bg-slate-100 sticky top-0">
-               <tr className="text-left text-slate-600">
-                 <th className="px-2 py-1.5">Text</th>
-                 <th className="px-2 py-1.5">Page</th>
-                 <th className="px-2 py-1.5">X</th>
-                 <th className="px-2 py-1.5">Y</th>
-                 <th className="px-2 py-1.5">Width</th>
-                 <th className="px-2 py-1.5">Height</th>
-                 <th className="px-2 py-1.5">Confidence</th>
-               </tr>
-             </thead>
-             <tbody>
-               {ocrWords.map((w, i) => (
-                 <tr key={i} className={i % 2 ? 'bg-slate-50' : 'bg-white'}>
-                   <td className="px-2 py-1 font-mono whitespace-pre-wrap break-words max-w-xs">{w.text || '\u00A0'}</td>
-                   <td className="px-2 py-1">{w.page}</td>
-                   <td className="px-2 py-1">{w.x}</td>
-                   <td className="px-2 py-1">{w.y}</td>
-                   <td className="px-2 py-1">{w.width}</td>
-                   <td className="px-2 py-1">{w.height}</td>
-                   <td className="px-2 py-1 font-mono">{w.confidence != null ? `${w.confidence}%` : '—'}</td>
-                 </tr>
-               ))}
-             </tbody>
-           </table>
-          </div>
-          </div>
-          )}
-
           {error && !loading && (
             <div className="flex flex-col items-center justify-center py-8 text-slate-500">
               <FileText className="w-10 h-10 mb-2 opacity-40" />
@@ -377,9 +292,9 @@ export default function PdfTextExtraction({ url }) {
             </div>
           )}
 
-          {!loading && !error && items.length === 0 && (
+          {!loading && !error && extractedItems.length === 0 && (
             <div className="py-6 px-4 bg-slate-50 rounded-lg space-y-2 text-sm text-slate-600">
-              <p className="font-medium text-slate-700">No embedded text was found in this PDF.</p>
+              <p className="font-medium text-slate-700">No text was found in this PDF.</p>
               <p className="text-xs text-slate-500">
                 PDF.js returned <span className="font-mono">{rawCount}</span> raw text item(s) across <span className="font-mono">{pageCount}</span> page(s), but none contained actual text content.
               </p>
@@ -389,7 +304,7 @@ export default function PdfTextExtraction({ url }) {
             </div>
           )}
 
-          {!loading && !error && items.length > 0 && (
+          {!loading && !error && extractedItems.length > 0 && (
             <>
               <div className="flex gap-1 border-b border-slate-200">
                 {[
@@ -429,24 +344,37 @@ export default function PdfTextExtraction({ url }) {
                     <thead className="bg-slate-100 sticky top-0">
                       <tr className="text-left text-slate-600">
                         <th className="px-2 py-1.5">#</th>
+                        <th className="px-2 py-1.5">Text</th>
                         <th className="px-2 py-1.5">Page</th>
                         <th className="px-2 py-1.5">X</th>
                         <th className="px-2 py-1.5">Y</th>
                         <th className="px-2 py-1.5">Width</th>
                         <th className="px-2 py-1.5">Height</th>
-                        <th className="px-2 py-1.5">Text</th>
+                        <th className="px-2 py-1.5">Source</th>
+                        <th className="px-2 py-1.5">Confidence</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((it, i) => (
+                      {extractedItems.map((it, i) => (
                         <tr key={i} className={i % 2 ? 'bg-slate-50' : 'bg-white'}>
                           <td className="px-2 py-1 text-slate-400">{i + 1}</td>
+                          <td className="px-2 py-1 font-mono whitespace-pre-wrap break-words max-w-md">{it.text}</td>
                           <td className="px-2 py-1">{it.page}</td>
                           <td className="px-2 py-1">{it.x}</td>
                           <td className="px-2 py-1">{it.y}</td>
                           <td className="px-2 py-1">{it.width}</td>
                           <td className="px-2 py-1">{it.height}</td>
-                          <td className="px-2 py-1 font-mono whitespace-pre-wrap break-words max-w-md">{it.text}</td>
+                          <td className="px-2 py-1">
+                            <span
+                              className={cn(
+                                'px-1.5 py-0.5 rounded-full font-medium',
+                                it.source === 'ocr' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                              )}
+                            >
+                              {it.source === 'ocr' ? 'OCR' : 'PDF Text'}
+                            </span>
+                          </td>
+                          <td className="px-2 py-1 font-mono">{it.confidence != null ? `${it.confidence}%` : '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -456,7 +384,7 @@ export default function PdfTextExtraction({ url }) {
 
               {view === 'json' && (
                 <pre className="max-h-96 overflow-auto bg-slate-900 text-slate-100 rounded-lg p-3 text-xs font-mono">
-                  {JSON.stringify(items, null, 2)}
+                  {JSON.stringify(extractedItems, null, 2)}
                 </pre>
               )}
             </>
