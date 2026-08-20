@@ -12,8 +12,9 @@ import StatusBadge from '@/components/StatusBadge';
 import CADViewer from '@/components/CADViewer';
 import LineItemsTable from '@/components/LineItemsTable';
 import ReviewNotesSection from '@/components/ReviewNotesSection';
-import { ArrowLeft, Save, Send, FileText, Box, Loader2, Download } from 'lucide-react';
+import { ArrowLeft, Save, Send, FileText, Box, Loader2, Download, ScanLine } from 'lucide-react';
 import PdfViewer from '@/components/PdfViewer';
+import DrawingAnalysis from '@/components/DrawingAnalysis';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { generateQuotePdf } from '@/lib/generateQuotePdf';
 import { cn } from '@/lib/utils';
@@ -331,9 +332,24 @@ export default function QuoteDetail() {
               >
                 <FileText className="w-4 h-4" /> PDF Document
               </button>
+              <button
+                onClick={() => setViewMode('analysis')}
+                className={cn(
+                  'px-4 py-2 text-sm font-medium transition border-b-2 -mb-px flex items-center gap-2',
+                  viewMode === 'analysis' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'
+                )}
+              >
+                <ScanLine className="w-4 h-4" /> Drawing Analysis
+              </button>
             </div>
 
-            {viewMode === 'cad' ? (
+            {viewMode === 'analysis' ? (
+              <DrawingAnalysis
+                documents={documents}
+                selectedDoc={selectedDoc}
+                onSelectDoc={setSelectedDoc}
+              />
+            ) : viewMode === 'cad' ? (
               <>
                 <label className="border-2 border-dashed border-slate-300 rounded-lg p-3 mb-3 flex items-center justify-center gap-2 cursor-pointer hover:border-slate-400 transition">
                   <Box className="w-5 h-5 text-slate-400" />
