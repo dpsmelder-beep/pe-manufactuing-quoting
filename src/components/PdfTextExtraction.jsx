@@ -17,6 +17,7 @@ export default function PdfTextExtraction({ url }) {
   const [ocrRenders, setOcrRenders] = useState([]); // [{ page, status, message }]
   const [ocrStatus, setOcrStatus] = useState(''); // live status string
   const [ocrResults, setOcrResults] = useState([]); // [{ page, text, confidence, error? }]
+  const [extractionMode, setExtractionMode] = useState(''); // 'PDF Embedded Text' | 'OCR' | 'Mixed'
   const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -37,100 +38,119 @@ export default function PdfTextExtraction({ url }) {
       setOcrRenders([]);
       setOcrStatus('');
       setOcrResults([]);
+      setExtractionMode('');
       try {
         const pdf = await pdfjsLib.getDocument({ url }).promise;
         if (cancelled) return;
         setPageCount(pdf.numPages);
-        const all = [];
+        // Step 1: attempt PDF.js embedded text extraction for every page.
+        const perPagePdfItems = {}; // pageNum -> standardized items
         let raw = 0;
         const stats = [];
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
           const page = await pdf.getPage(pageNum);
           if (cancelled) return;
-          // includeMarkedContent keeps structure markers; we still filter display.
           const content = await page.getTextContent();
           if (cancelled) return;
           let pageChars = 0;
+          const pageItems = [];
           content.items.forEach((it) => {
             raw++;
             const s = it.str ?? '';
             if (s.trim()) {
-              all.push(fromPdfText(pageNum, it));
+              pageItems.push(fromPdfText(pageNum, it));
               pageChars += s.trim().length;
             }
           });
+          perPagePdfItems[pageNum] = pageItems;
           stats.push({ page: pageNum, charCount: pageChars });
         }
-        if (!cancelled) {
-          setRawCount(raw);
-          setExtractedItems(all);
-          setPageStats(stats);
+        if (cancelled) return;
+        setRawCount(raw);
+        setPageStats(stats);
 
-          // Render OCR-required pages to an off-screen canvas (white bg, scale 3.0).
-          const renders = []; // [{ page, canvas }]
-          for (const s of stats) {
-            if (s.charCount >= 20) continue;
-            try {
-              const page = await pdf.getPage(s.page);
-              if (cancelled) return;
-              const viewport = page.getViewport({ scale: 3.0 });
-              const canvas = document.createElement('canvas'); // off-screen, not attached
-              canvas.width = Math.ceil(viewport.width);
-              canvas.height = Math.ceil(viewport.height);
-              const ctx = canvas.getContext('2d');
-              ctx.fillStyle = '#ffffff';
-              ctx.fillRect(0, 0, canvas.width, canvas.height);
-              await page.render({ canvasContext: ctx, viewport }).promise;
-              if (cancelled) return;
-              renders.push({ page: s.page, canvas });
-            } catch (err) {
-              renders.push({ page: s.page, error: err?.message || String(err) });
-            }
-          }
-          if (!cancelled) {
-            setOcrRenders(
-              renders.map((r) =>
-                r.error
-                  ? { page: r.page, status: 'error', message: `Page ${r.page} render failed: ${r.error}` }
-                  : { page: r.page, status: 'success', message: `Page ${r.page} rendered successfully for OCR` }
-              )
-            );
-            if (!cancelled) setLoading(false); // panels visible while OCR runs
+        // Step 2-4: per page, use embedded text if sufficient (>=20 chars),
+        // otherwise render + OCR. Build the single standardized item list.
+        const unified = [];
+        const ocrNeeded = stats.filter((s) => s.charCount < 20).map((s) => s.page);
+        const pagesPdf = stats.length - ocrNeeded.length;
 
-            // Run Tesseract.js OCR on each rendered canvas (English only).
-            const results = [];
-            for (const r of renders) {
-              if (cancelled) return;
-              if (r.error) {
-                results.push({ page: r.page, error: r.error });
-                setOcrResults([...results]);
-                continue;
-              }
-              setOcrStatus('Preparing page for OCR');
-              setOcrStatus(`Reading page ${r.page}`);
-              try {
-                const { data } = await tesseractRecognize(r.canvas, 'eng', {
-                  logger: (m) => {
-                    if (m?.status === 'recognizing text') setOcrStatus('Recognizing text');
-                  },
-                });
-                results.push({ page: r.page, text: data.text || '', confidence: data.confidence });
-                // Word-level location capture, normalized to the standard item
-                // shape and merged into the single extractedItems list.
-                const scale = 3.0;
-                const canvasH = r.canvas.height;
-                const words = flattenOcrWords(data).map((w) => fromOcrWord(r.page, w, scale, canvasH));
-                if (!cancelled && words.length) {
-                  setExtractedItems((prev) => [...prev, ...words]);
-                }
-              } catch (err) {
-                results.push({ page: r.page, error: err?.message || String(err) });
-              }
-              setOcrResults([...results]);
-            }
-            if (!cancelled) setOcrStatus('OCR complete');
+        // Emit embedded-text items for sufficient pages right away.
+        stats.forEach((s) => {
+          if (s.charCount >= 20) unified.push(...perPagePdfItems[s.page]);
+        });
+        setExtractedItems([...unified]);
+
+        // Render the OCR-required pages to off-screen canvases (scale 3.0).
+        const renders = []; // [{ page, canvas }]
+        for (const pageNum of ocrNeeded) {
+          try {
+            const page = await pdf.getPage(pageNum);
+            if (cancelled) return;
+            const viewport = page.getViewport({ scale: 3.0 });
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.ceil(viewport.width);
+            canvas.height = Math.ceil(viewport.height);
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            await page.render({ canvasContext: ctx, viewport }).promise;
+            if (cancelled) return;
+            renders.push({ page: pageNum, canvas });
+          } catch (err) {
+            renders.push({ page: pageNum, error: err?.message || String(err) });
           }
         }
+        if (cancelled) return;
+        setOcrRenders(
+          renders.map((r) =>
+            r.error
+              ? { page: r.page, status: 'error', message: `Page ${r.page} render failed: ${r.error}` }
+              : { page: r.page, status: 'success', message: `Page ${r.page} rendered successfully for OCR` }
+          )
+        );
+        setLoading(false); // panels visible while OCR runs
+
+        // Run Tesseract.js OCR on each rendered canvas and merge (step 5).
+        const results = [];
+        for (const r of renders) {
+          if (cancelled) return;
+          if (r.error) {
+            results.push({ page: r.page, error: r.error });
+            setOcrResults([...results]);
+            continue;
+          }
+          setOcrStatus(`Reading page ${r.page}`);
+          try {
+            const { data } = await tesseractRecognize(r.canvas, 'eng', {
+              logger: (m) => {
+                if (m?.status === 'recognizing text') setOcrStatus('Recognizing text');
+              },
+            });
+            results.push({ page: r.page, text: data.text || '', confidence: data.confidence });
+            const scale = 3.0;
+            const canvasH = r.canvas.height;
+            const words = flattenOcrWords(data).map((w) => fromOcrWord(r.page, w, scale, canvasH));
+            if (words.length) {
+              unified.push(...words);
+              setExtractedItems([...unified]);
+            }
+          } catch (err) {
+            results.push({ page: r.page, error: err?.message || String(err) });
+          }
+          setOcrResults([...results]);
+        }
+        if (cancelled) return;
+
+        // Overall extraction mode across all pages.
+        const pagesOcr = renders.filter((r) => !r.error).length;
+        const mode = pagesOcr === 0
+          ? 'PDF Embedded Text'
+          : pagesPdf === 0
+            ? 'OCR'
+            : 'Mixed';
+        setExtractionMode(mode);
+        setOcrStatus('OCR complete');
       } catch (err) {
         if (!cancelled) {
           setError(true);
@@ -177,7 +197,23 @@ export default function PdfTextExtraction({ url }) {
             </span>
           )}
         </span>
-        <span className="text-xs text-slate-400">PDF.js getTextContent() diagnostic</span>
+        <span className="flex items-center gap-2">
+          {extractionMode && (
+            <span
+              className={cn(
+                'px-2 py-0.5 rounded-full text-xs font-medium',
+                extractionMode === 'Mixed'
+                  ? 'bg-violet-100 text-violet-700'
+                  : extractionMode === 'OCR'
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-emerald-100 text-emerald-700'
+              )}
+            >
+              {extractionMode}
+            </span>
+          )}
+          <span className="text-xs text-slate-400">Automatic extraction</span>
+        </span>
       </button>
 
       {open && (
