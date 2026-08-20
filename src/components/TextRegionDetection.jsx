@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Loader2, ChevronDown, ChevronRight, ScanSearch } from 'lucide-react';
 import { loadPdf, renderPageToCanvas, HIGH_OCR_SCALE } from '@/lib/pdfOcrService';
 import { scaleCanvas } from '@/lib/imagePreprocessing';
-import { detectTextRegions, drawRegionsOverlay } from '@/lib/textRegionDetection';
+import { detectTextRegions, drawRegionsOverlay, cropRegion } from '@/lib/textRegionDetection';
+
+const REGION_PADDING = 15; // px at high-resolution render scale (10–20 target)
 
 const DISPLAY_W = 1000;
 const MAX_CANVAS_DIM = 4000; // avoid mobile canvas-size limits on large drawings
@@ -50,7 +52,18 @@ export default function TextRegionDetection({ url }) {
           const dispScale = Math.min(1, DISPLAY_W / canvas.width);
           const displayBase = scaleCanvas(canvas, dispScale);
           const overlay = drawRegionsOverlay(displayBase, regions, dispScale);
-          entries.push({ pageNum: p, overlayUrl: overlay.toDataURL('image/png'), regionCount: regions.length, stats });
+          const crops = regions.map((r, i) => {
+            const crop = cropRegion(canvas, r, REGION_PADDING);
+            return {
+              index: i + 1,
+              x: crop.x,
+              y: crop.y,
+              width: crop.width,
+              height: crop.height,
+              url: crop.canvas.toDataURL('image/png'),
+            };
+          });
+          entries.push({ pageNum: p, overlayUrl: overlay.toDataURL('image/png'), regionCount: regions.length, stats, crops });
           setPages([...entries]);
         }
         setStatus('Text region detection complete');
@@ -119,6 +132,30 @@ export default function TextRegionDetection({ url }) {
                 <Mini label="Regions" value={pg.stats.regions} />
                 <Mini label="Median Char" value={`${pg.stats.medianCharW}×${pg.stats.medianCharH}px`} />
               </div>
+
+              {pg.crops.length > 0 && (
+                <div>
+                  <div className="px-3 py-2 bg-slate-50 border-t border-slate-200 text-xs font-semibold text-slate-700">
+                    Candidate Text Crops ({pg.crops.length})
+                  </div>
+                  <div className="max-h-96 overflow-y-auto p-2 grid grid-cols-2 sm:grid-cols-3 gap-2 bg-white">
+                    {pg.crops.map((crop) => (
+                      <div key={crop.index} className="border border-slate-200 rounded-lg overflow-hidden">
+                        <div className="bg-slate-100 p-1 flex items-center justify-center">
+                          <img src={crop.url} alt={`Crop ${crop.index} page ${pg.pageNum}`} className="max-h-32 w-auto object-contain" />
+                        </div>
+                        <div className="px-2 py-1.5 text-[11px] text-slate-600 space-y-0.5">
+                          <div className="flex justify-between"><span className="text-slate-400">Region</span><span className="font-medium">#{crop.index} · p{pg.pageNum}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-400">X</span><span className="font-mono">{crop.x}px</span></div>
+                          <div className="flex justify-between"><span className="text-slate-400">Y</span><span className="font-mono">{crop.y}px</span></div>
+                          <div className="flex justify-between"><span className="text-slate-400">Width</span><span className="font-mono">{crop.width}px</span></div>
+                          <div className="flex justify-between"><span className="text-slate-400">Height</span><span className="font-mono">{crop.height}px</span></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
 

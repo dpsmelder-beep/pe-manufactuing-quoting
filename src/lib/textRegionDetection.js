@@ -216,6 +216,28 @@ export function detectTextRegions(sourceCanvas, opts = {}) {
 }
 
 /**
+ * Crop a single detected region out of the high-resolution render with padding
+ * so characters are not clipped. Coordinates are clamped to the canvas bounds.
+ * The source canvas is not modified.
+ *
+ * @returns {{ canvas, x, y, width, height }} the crop canvas and its top-left
+ *   coordinate (including padding) on the source render.
+ */
+export function cropRegion(sourceCanvas, region, padding = 15) {
+  const w = sourceCanvas.width;
+  const h = sourceCanvas.height;
+  const x = Math.max(0, Math.round(region.x - padding));
+  const y = Math.max(0, Math.round(region.y - padding));
+  const width = Math.min(w - x, Math.round(region.w + padding * 2));
+  const height = Math.min(h - y, Math.round(region.h + padding * 2));
+  const c = document.createElement('canvas');
+  c.width = width;
+  c.height = height;
+  c.getContext('2d').drawImage(sourceCanvas, x, y, width, height, 0, 0, width, height);
+  return { canvas: c, x, y, width, height };
+}
+
+/**
  * Draw detected regions as rectangles over a copy of a base (display) canvas.
  * `regions` are in source-canvas pixel coordinates; `scale` maps them to the
  * base canvas. The base canvas is not modified.
