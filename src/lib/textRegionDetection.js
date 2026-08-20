@@ -260,6 +260,29 @@ export function expandRegion(region, factor, bounds) {
   return { x, y, w: right - x, h: bottom - y };
 }
 
+/**
+ * Directional expansion: favors the text's long axis to recover clipped
+ * first/last characters without grabbing excessive geometry above/below.
+ * Horizontal text (w >= h): left/right = 50% of height, top/bottom = 20%.
+ * Vertical text (h > w): the same logic rotated 90° — top/bottom = 50% of
+ * width, left/right = 20%. Result is clamped to page bounds.
+ */
+export function expandRegionDirectional(region, bounds) {
+  const horizontal = region.w >= region.h;
+  const basis = horizontal ? region.h : region.w;
+  const longPad = basis * 0.5;
+  const shortPad = basis * 0.2;
+  const leftPad = horizontal ? longPad : shortPad;
+  const rightPad = horizontal ? longPad : shortPad;
+  const topPad = horizontal ? shortPad : longPad;
+  const bottomPad = horizontal ? shortPad : longPad;
+  const x = Math.max(0, Math.round(region.x - leftPad));
+  const y = Math.max(0, Math.round(region.y - topPad));
+  const right = Math.min(bounds.w, Math.round(region.x + region.w + rightPad));
+  const bottom = Math.min(bounds.h, Math.round(region.y + region.h + bottomPad));
+  return { x, y, w: right - x, h: bottom - y, orientation: horizontal ? 'horizontal' : 'vertical' };
+}
+
 /** Crop an arbitrary bounding box (already in source-canvas coords) from a render. */
 export function cropBox(sourceCanvas, box) {
   const w = sourceCanvas.width;

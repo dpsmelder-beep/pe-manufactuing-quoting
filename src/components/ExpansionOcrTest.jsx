@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, ChevronDown, ChevronRight, ScanText } from 'lucide-react';
 import { loadPdf, renderPageToCanvas, HIGH_OCR_SCALE } from '@/lib/pdfOcrService';
-import { detectTextRegions, expandRegion, cropBox, EXPANSION_LEVELS } from '@/lib/textRegionDetection';
+import { detectTextRegions, expandRegion, expandRegionDirectional, cropBox, EXPANSION_LEVELS } from '@/lib/textRegionDetection';
 import { ocrCanvasOnce } from '@/lib/regionOcrService';
 
 const MAX_CANVAS_DIM = 4000;
@@ -66,6 +66,21 @@ export default function ExpansionOcrTest({ url }) {
               const { text, confidence, wordCount, charCount } = await ocrCanvasOnce(crop.canvas);
               levels.push({ key: lvl.key, label: lvl.label, color: lvl.color, text, confidence, wordCount, charCount });
             }
+            // Directional crop: favors the text's long axis (rotated logic for vertical text).
+            if (cancelled) return;
+            setStatus(`OCR p${p} region ${i + 1}/${regions.length} — Directional`);
+            const dBox = expandRegionDirectional(r, bounds);
+            const dCrop = cropBox(canvas, dBox);
+            const dRes = await ocrCanvasOnce(dCrop.canvas);
+            levels.push({
+              key: 'directional',
+              label: `Directional · ${dBox.orientation}`,
+              color: '#8b5cf6',
+              text: dRes.text,
+              confidence: dRes.confidence,
+              wordCount: dRes.wordCount,
+              charCount: dRes.charCount,
+            });
             entry.results.push({ index: i + 1, levels });
             setPages([...pageEntries]);
           }
@@ -140,7 +155,7 @@ export default function ExpansionOcrTest({ url }) {
                       <div className="text-xs font-semibold text-slate-700 mb-2">
                         Region {res.index} <span className="text-slate-400 font-normal">· p{pg.pageNum}</span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                         {res.levels.map((lv) => (
                           <div key={lv.key} className="rounded-lg border border-slate-200 overflow-hidden">
                             <div className="px-2 py-1 text-[11px] font-medium flex items-center gap-1" style={{ color: lv.color, background: lv.color + '12' }}>
