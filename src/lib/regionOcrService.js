@@ -22,7 +22,8 @@ export async function ocrCanvasOnce(canvas) {
   const text = (data.text || '').trim();
   const confidence = typeof data.confidence === 'number' ? Math.round(data.confidence) : 0;
   const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0;
-  return { text, confidence, wordCount };
+  const charCount = text.length;
+  return { text, confidence, wordCount, charCount };
 }
 
 /**
