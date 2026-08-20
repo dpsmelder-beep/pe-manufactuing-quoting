@@ -98,3 +98,77 @@ export async function removeEngineeringLines(bwCanvas, charH, factor = 5) {
 
   return { detectedDataUrl, textDataUrl, lineLen };
 }
+
+function matToCanvas(cv, rgbaMat) {
+  const w = rgbaMat.cols;
+  const h = rgbaMat.rows;
+  const clamped = new Uint8ClampedArray(rgbaMat.data.length);
+  clamped.set(rgbaMat.data);
+  const imgData = new ImageData(clamped, w, h);
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  c.getContext('2d').putImageData(imgData, 0, 0);
+  return c;
+}
+
+/**
+ * Build the OpenCV line-removed image as a canvas (dark text on white) to be
+ * used ONLY for locating/grouping text. Same morphology settings as
+ * removeEngineeringLines. Returns the cleaned canvas and the detected-line
+ * canvas for diagnostic display. The original PDF render is never modified.
+ */
+export async function getCleanedCanvas(bwCanvas, charH, factor = 5) {
+  const cv = await loadOpenCV();
+  const w = bwCanvas.width;
+  const h = bwCanvas.height;
+  const ctx = bwCanvas.getContext('2d');
+  const imgData = ctx.getImageData(0, 0, w, h);
+
+  const src = cv.matFromImageData(imgData);
+  const gray = new cv.Mat();
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  const bin = new cv.Mat();
+  cv.threshold(gray, bin, 128, 255, cv.THRESH_BINARY_INV);
+
+  const lineLen = Math.max(8, Math.round(charH * factor));
+  const hKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(lineLen, 1));
+  const vKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(1, lineLen));
+  const hLines = new cv.Mat();
+  const vLines = new cv.Mat();
+  cv.morphologyEx(bin, hLines, cv.MORPH_OPEN, hKernel);
+  cv.morphologyEx(bin, vLines, cv.MORPH_OPEN, vKernel);
+
+  const detected = new cv.Mat();
+  cv.bitwise_or(hLines, vLines, detected);
+  const notDetected = new cv.Mat();
+  cv.bitwise_not(detected, notDetected);
+  const textFg = new cv.Mat();
+  cv.bitwise_and(bin, notDetected, textFg);
+  const textDisplay = new cv.Mat();
+  cv.bitwise_not(textFg, textDisplay);
+
+  const detectedRgba = new cv.Mat();
+  const textRgba = new cv.Mat();
+  cv.cvtColor(detected, detectedRgba, cv.COLOR_GRAY2RGBA);
+  cv.cvtColor(textDisplay, textRgba, cv.COLOR_GRAY2RGBA);
+
+  const cleanedCanvas = matToCanvas(cv, textRgba);
+  const detectedCanvas = matToCanvas(cv, detectedRgba);
+
+  src.delete();
+  gray.delete();
+  bin.delete();
+  hKernel.delete();
+  vKernel.delete();
+  hLines.delete();
+  vLines.delete();
+  detected.delete();
+  notDetected.delete();
+  textFg.delete();
+  textDisplay.delete();
+  detectedRgba.delete();
+  textRgba.delete();
+
+  return { cleanedCanvas, detectedCanvas, lineLen };
+}
