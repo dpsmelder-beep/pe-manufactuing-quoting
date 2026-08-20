@@ -21,6 +21,7 @@ import RegionOcrTest from '@/components/RegionOcrTest';
 import ExpansionOcrTest from '@/components/ExpansionOcrTest';
 import RegionMergingTest from '@/components/RegionMergingTest';
 import DrawingAnalysisTest from '@/components/DrawingAnalysisTest';
+import FinalOcrCropTest from '@/components/FinalOcrCropTest';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { generateQuotePdf } from '@/lib/generateQuotePdf';
 import { cn } from '@/lib/utils';
@@ -417,6 +418,7 @@ export default function QuoteDetail() {
                     <ExpansionOcrTest url={selectedDoc.url} />
                     <RegionMergingTest url={selectedDoc.url} />
                     <DrawingAnalysisTest url={selectedDoc.url} />
+                    <FinalOcrCropTest url={selectedDoc.url} />
                   </div>
                 </>
               ) : (

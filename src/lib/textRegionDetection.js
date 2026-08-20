@@ -307,6 +307,38 @@ export function expandRegionDirectional(region, bounds) {
   return { x, y, w: right - x, h: bottom - y, orientation: horizontal ? 'horizontal' : 'vertical' };
 }
 
+/**
+ * Final OCR crop expansion: padding is based on the detected text region's
+ * estimated character height (not a percentage of width). For horizontal text,
+ * left/right = 1.0× char height and top/bottom = 0.40× char height, so the
+ * first/last characters of a dimension are not clipped without grabbing much
+ * geometry above/below. Vertical text rotates the same logic (heavy padding on
+ * top/bottom). The result is clamped to the page boundary.
+ */
+export function expandRegionForOcr(region, bounds) {
+  const horizontal = region.w >= region.h;
+  const charH = horizontal ? region.h : region.w;
+  const longPad = charH * 1.0;
+  const shortPad = charH * 0.4;
+  const leftPad = horizontal ? longPad : shortPad;
+  const rightPad = horizontal ? longPad : shortPad;
+  const topPad = horizontal ? shortPad : longPad;
+  const bottomPad = horizontal ? shortPad : longPad;
+  const x = Math.max(0, Math.round(region.x - leftPad));
+  const y = Math.max(0, Math.round(region.y - topPad));
+  const right = Math.min(bounds.w, Math.round(region.x + region.w + rightPad));
+  const bottom = Math.min(bounds.h, Math.round(region.y + region.h + bottomPad));
+  return {
+    x,
+    y,
+    w: right - x,
+    h: bottom - y,
+    orientation: horizontal ? 'horizontal' : 'vertical',
+    charH: Math.round(charH),
+    padding: { left: longPad, right: longPad, top: shortPad, bottom: shortPad },
+  };
+}
+
 // ---- Region merging (diagnostic stage before OCR) ----
 //
 // The row splitter may break one engineering callout into several adjacent
