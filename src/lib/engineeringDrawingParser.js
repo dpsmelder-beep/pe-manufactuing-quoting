@@ -585,6 +585,51 @@ function matchThread(text) {
   return null;
 }
 
+// Depth / through-hole condition recognition. Recognizes STANDALONE depth and
+// through tokens (THRU, THROUGH, THRU ALL, DEPTH .500, DEEP .500, .500 DEEP,
+// DP .500, ↧ .500). Pure recognition only — no drill/tap depth calculation, no
+// counterbore/countersink interpretation. Anchored, so a number merely
+// followed by THRU (e.g. "0.5 THRU") or a bare "DEEP" with no value is NOT
+// treated as a depth (stays unclassified). The recognized conditions are later
+// associated with nearby thread (and, in future, hole) records by the
+// association step in parseDrawingItems.
+const THRU_RE = /^(THRU\s+ALL|THROUGH|THRU)$/i;
+const DEPTH_VALUE = '(\\d*\\.\\d+|\\d+(?:\\.\\d+)?)';
+const DEPTH_PREFIX_RE = new RegExp(`^(?:DEPTH|DEEP|DP|↧|↓)\\s*${DEPTH_VALUE}$`, 'i');
+const DEPTH_SUFFIX_RE = new RegExp(`^${DEPTH_VALUE}\\s*(?:DEEP|DP|DEPTH)$`, 'i');
+
+/**
+ * Parse a standalone depth/through condition. Returns
+ *   { depth_type: 'thru', depth: null, original_text }
+ * for through conditions, or
+ *   { depth_type: 'blind', depth: <number>, original_text }
+ * for an explicit depth. Returns null when the text is not a confident
+ * depth/through token. Exported for testing and future hole-record reuse.
+ */
+export function parseDepthCondition(text) {
+  const original = text.trim();
+  const norm = original.replace(/\s+/g, ' ').trim();
+  if (!norm) return null;
+  if (THRU_RE.test(norm)) {
+    return { depth_type: 'thru', depth: null, original_text: original };
+  }
+  let m = norm.match(DEPTH_PREFIX_RE);
+  if (m) {
+    return { depth_type: 'blind', depth: Number(m[1]), original_text: original };
+  }
+  m = norm.match(DEPTH_SUFFIX_RE);
+  if (m) {
+    return { depth_type: 'blind', depth: Number(m[1]), original_text: original };
+  }
+  return null;
+}
+
+function matchDepth(text) {
+  const d = parseDepthCondition(text);
+  if (!d) return null;
+  return { category: 'depths', type: 'depth', ...d };
+}
+
 const MATCHERS = [
   matchDiameter,
   matchRadius,
@@ -594,6 +639,7 @@ const MATCHERS = [
   matchFinish,
   matchMaterial,
   matchSpecification,
+  matchDepth,
   matchDimension,
   matchNote,
 ];
@@ -740,12 +786,59 @@ function detectPossibleLimitDimensions(dimEntries) {
   return pairs;
 }
 
+/**
+ * Attach recognized depth/through conditions to nearby thread records based on
+ * bounding-box proximity (same page only). A depth token is associated with the
+ * nearest thread within a conservative distance; associated depths are removed
+ * from the standalone depths collection (which remains as the foundation for
+ * future hole records). Threads/depths without a bounding box, or with no
+ * nearby match, are left untouched — no depth is ever guessed.
+ */
+function bboxCenter(b) {
+  return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+}
+
+function centerDistance(a, b) {
+  const ca = bboxCenter(a);
+  const cb = bboxCenter(b);
+  return Math.hypot(ca.x - cb.x, ca.y - cb.y);
+}
+
+function associateThreadDepths(threads, depths) {
+  const used = new Set();
+  for (const t of threads) {
+    if (!t.bbox) continue;
+    const limit = 4 * Math.hypot(t.bbox.width, t.bbox.height) || 120;
+    let best = null;
+    let bestDist = Infinity;
+    for (let i = 0; i < depths.length; i++) {
+      if (used.has(i)) continue;
+      const d = depths[i];
+      if (!d.bbox) continue;
+      if ((d.page ?? null) !== (t.page ?? null)) continue;
+      const dist = centerDistance(t.bbox, d.bbox);
+      if (dist <= limit && dist < bestDist) {
+        best = i;
+        bestDist = dist;
+      }
+    }
+    if (best != null) {
+      const d = depths[best];
+      t.depth_type = d.depth_type;
+      t.depth = d.depth;
+      used.add(best);
+    }
+  }
+  return depths.filter((_, i) => !used.has(i));
+}
+
 export const CATEGORIES = [
   'dimensions',
   'radii',
   'diameters',
   'quantities',
   'threads',
+  'depths',
   'materials',
   'finishes',
   'notes',
@@ -769,6 +862,7 @@ export function parseDrawingItems(items) {
     diameters: [],
     quantities: [],
     threads: [],
+    depths: [],
     materials: [],
     finishes: [],
     notes: [],
@@ -782,5 +876,6 @@ export function parseDrawingItems(items) {
     bucket.push(entry);
   }
   out.possible_limit_dimensions = detectPossibleLimitDimensions(out.dimensions);
+  out.depths = associateThreadDepths(out.threads, out.depths);
   return out;
 }

@@ -110,6 +110,8 @@ export function mapThread(e) {
       { label: 'Quantity', value: e.quantity != null ? e.quantity : '—' },
       { label: 'Series', value: e.series || '—' },
       { label: 'Class', value: e.class || '—' },
+      { label: 'Depth Type', value: e.depth_type || '—' },
+      { label: 'Depth', value: e.depth != null ? e.depth : '—' },
     ],
   };
 }
