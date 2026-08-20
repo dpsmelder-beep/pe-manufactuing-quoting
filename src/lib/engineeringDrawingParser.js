@@ -300,8 +300,9 @@ function matchFinish(text) {
   }
   // 2) Explicit FINISH prefix — classify the associated value.
   m = text.match(/\b(?:SURFACE\s+)?FINISH(?:ED)?\s*[:=]?\s*(.+)/i);
-  if (m && m[1].trim()) {
-    return { category: 'finishes', type: 'finish', value: m[1].trim(), original_text: original };
+  if (m) {
+    const val = m[1].replace(/^[\s:=\-]+/, '').trim();
+    if (val) return { category: 'finishes', type: 'finish', value: val, original_text: original };
   }
   // 3) Known finish keywords (anodize, passivate, plate, ...), word-bounded.
   for (const kw of FINISH_KEYWORDS) {
@@ -317,8 +318,9 @@ function matchMaterial(text) {
   const original = text.trim();
   // 1) MATERIAL / MAT'L / MATL prefix — classify the associated value.
   let m = text.match(/\bMAT(?:ERIAL|'L|L)\.?\s*[:=]?\s*(.+)/i);
-  if (m && m[1].trim()) {
-    return { category: 'materials', type: 'material', value: m[1].trim(), original_text: original };
+  if (m) {
+    const val = m[1].replace(/^[\s:=\-]+/, '').trim();
+    if (val) return { category: 'materials', type: 'material', value: val, original_text: original };
   }
   // 2) Known material keywords (e.g. "304 Stainless Steel", "Brass"). The full
   //    original text is kept as the value — no keyword dictionary is built.
@@ -329,8 +331,10 @@ function matchMaterial(text) {
     }
   }
   // 3) Common alloy / grade designations (e.g. 6061-T6, 304, 17-4PH, A36, 12L14).
+  // Anchored to the full string so a designation embedded in a part number
+  // (e.g. "PN-6061") is NOT inferred as a material.
   m = text.match(
-    /\b(6061|6063|7075|5052|2024|3003)(?:[-_]?(T[0-9]+))?|\b(303|304|316L?|17-4(?:PH)?|410|420|1018|1045|12L14|4140|4340|8620|A36|O1|D2|A2|S7)(?:\b)/i
+    /^(6061|6063|7075|5052|2024|3003)(?:[-_]?(T[0-9]+))?\s*$|^(303|304|316L?|17-4(?:PH)?|410|420|1018|1045|12L14|4140|4340|8620|A36|O1|D2|A2|S7)\s*$/i
   );
   if (m) {
     return { category: 'materials', type: 'material', value: m[0].trim(), original_text: original };
