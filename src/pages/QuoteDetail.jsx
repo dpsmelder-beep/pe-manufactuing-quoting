@@ -16,6 +16,7 @@ import { ArrowLeft, Save, Send, FileText, Box, Loader2, Download } from 'lucide-
 import PdfViewer from '@/components/PdfViewer';
 import PdfTextExtraction from '@/components/PdfTextExtraction';
 import OcrPreprocessingTest from '@/components/OcrPreprocessingTest';
+import TextRegionDetection from '@/components/TextRegionDetection';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { generateQuotePdf } from '@/lib/generateQuotePdf';
 import { cn } from '@/lib/utils';
@@ -407,6 +408,7 @@ export default function QuoteDetail() {
                     )}
                     <PdfTextExtraction url={selectedDoc.url} />
                     <OcrPreprocessingTest url={selectedDoc.url} />
+                    <TextRegionDetection url={selectedDoc.url} />
                   </div>
                 </>
               ) : (

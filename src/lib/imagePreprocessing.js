@@ -14,6 +14,15 @@ export function cloneCanvas(source) {
   return c;
 }
 
+/** Return a scaled copy of a canvas. */
+export function scaleCanvas(source, scale) {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(source.width * scale));
+  c.height = Math.max(1, Math.round(source.height * scale));
+  c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
+  return c;
+}
+
 function getImageData(canvas) {
   return canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
 }
