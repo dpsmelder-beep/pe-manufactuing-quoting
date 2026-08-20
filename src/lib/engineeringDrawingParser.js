@@ -191,8 +191,9 @@ function matchDimension(text) {
       spec: text.trim(),
     };
   }
-  // Limit dimension: 10.00/9.98
-  m = text.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*(mm|in|cm|")?/i);
+  // Limit dimension: 10.00/9.98 (decimals required — bare integer ratios like
+  // 1/4 are fractional inches, handled below).
+  m = text.match(/(\d+\.\d+)\s*\/\s*(\d+\.\d+)\s*(mm|in|cm|")?/i);
   if (m) {
     return {
       category: 'dimensions',
