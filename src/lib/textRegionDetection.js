@@ -238,6 +238,76 @@ export function cropRegion(sourceCanvas, region, padding = 15) {
 }
 
 /**
+ * Expansion levels tested before generating an OCR crop. Expansion is applied
+ * equally to all four sides as a proportion of the detected region's width
+ * and height, then clamped to the page boundaries.
+ */
+export const EXPANSION_LEVELS = [
+  { key: 'original', label: 'Original', color: '#ef4444', factor: 0 },
+  { key: 'small', label: 'Small +15%', color: '#f59e0b', factor: 0.15 },
+  { key: 'medium', label: 'Medium +30%', color: '#22c55e', factor: 0.30 },
+  { key: 'large', label: 'Large +50%', color: '#06b6d4', factor: 0.50 },
+];
+
+/** Expand a region equally on all four sides by factor*w / factor*h, clamped to bounds. */
+export function expandRegion(region, factor, bounds) {
+  const dx = region.w * factor;
+  const dy = region.h * factor;
+  const x = Math.max(0, Math.round(region.x - dx));
+  const y = Math.max(0, Math.round(region.y - dy));
+  const right = Math.min(bounds.w, Math.round(region.x + region.w + dx));
+  const bottom = Math.min(bounds.h, Math.round(region.y + region.h + dy));
+  return { x, y, w: right - x, h: bottom - y };
+}
+
+/** Crop an arbitrary bounding box (already in source-canvas coords) from a render. */
+export function cropBox(sourceCanvas, box) {
+  const w = sourceCanvas.width;
+  const h = sourceCanvas.height;
+  const x = Math.max(0, Math.round(box.x));
+  const y = Math.max(0, Math.round(box.y));
+  const width = Math.max(1, Math.min(w - x, Math.round(box.w)));
+  const height = Math.max(1, Math.min(h - y, Math.round(box.h)));
+  const c = document.createElement('canvas');
+  c.width = width;
+  c.height = height;
+  c.getContext('2d').drawImage(sourceCanvas, x, y, width, height, 0, 0, width, height);
+  return { canvas: c, x, y, width, height };
+}
+
+/**
+ * Overlay the original + three expanded boxes (distinguishable colors) and the
+ * region number on a copy of the display canvas. `regions` are in source-canvas
+ * pixel coords; `scale` maps them to the display canvas. `sourceW/sourceH` are
+ * the full-resolution page bounds used for clamping expansion.
+ */
+export function drawExpansionOverlay(baseCanvas, regions, scale, sourceW, sourceH) {
+  const out = document.createElement('canvas');
+  out.width = baseCanvas.width;
+  out.height = baseCanvas.height;
+  const ctx = out.getContext('2d');
+  ctx.drawImage(baseCanvas, 0, 0);
+  const bounds = { w: sourceW, h: sourceH };
+  const order = [...EXPANSION_LEVELS].reverse(); // large → original (original on top)
+  const fontPx = Math.max(9, 12 * scale);
+  for (let i = 0; i < regions.length; i++) {
+    const r = regions[i];
+    for (const lvl of order) {
+      const box = lvl.factor === 0 ? r : expandRegion(r, lvl.factor, bounds);
+      ctx.lineWidth = Math.max(1, (lvl.key === 'original' ? 2 : 1.5) * scale);
+      ctx.strokeStyle = lvl.color;
+      ctx.strokeRect(box.x * scale, box.y * scale, box.w * scale, box.h * scale);
+    }
+    const large = expandRegion(r, 0.5, bounds);
+    ctx.font = `bold ${fontPx}px sans-serif`;
+    ctx.fillStyle = '#06b6d4';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`${i + 1}`, large.x * scale + 2, large.y * scale - 2);
+  }
+  return out;
+}
+
+/**
  * Draw detected regions as rectangles over a copy of a base (display) canvas.
  * `regions` are in source-canvas pixel coordinates; `scale` maps them to the
  * base canvas. The base canvas is not modified.
