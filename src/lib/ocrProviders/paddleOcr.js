@@ -11,25 +11,33 @@
 // bounding boxes (polygons) + recognition scores. Results are mapped into the
 // standardized OCR JSON item shape so downstream code stays engine-agnostic.
 
-import { PaddleOCR } from '@paddleocr/paddleocr-js';
-
 export const id = 'paddleocr';
 
+// Lazily import the SDK so the heavy ONNX Runtime Web bundle is only loaded
+// when this provider is actually used — it never enters the module graph for
+// pages that don't run OCR.
+let PaddleOCRCtor = null;
 let servicePromise = null;
 
 async function getService(onStatus) {
   if (!servicePromise) {
-    if (onStatus) onStatus('Loading PaddleOCR model (first run downloads weights)');
-    servicePromise = PaddleOCR.create({
-      lang: 'en',
-      ocrVersion: 'PP-OCRv5',
-      ortOptions: {
-        backend: 'wasm',
-        wasmPaths: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/',
-        numThreads: 2,
-        simd: true,
-      },
-    }).catch((err) => {
+    if (onStatus) onStatus('Loading PaddleOCR SDK + model (first run downloads weights)');
+    servicePromise = (async () => {
+      if (!PaddleOCRCtor) {
+        const mod = await import('@paddleocr/paddleocr-js');
+        PaddleOCRCtor = mod.PaddleOCR;
+      }
+      return PaddleOCRCtor.create({
+        lang: 'en',
+        ocrVersion: 'PP-OCRv5',
+        ortOptions: {
+          backend: 'wasm',
+          wasmPaths: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/',
+          numThreads: 1,
+          simd: true,
+        },
+      });
+    })().catch((err) => {
       servicePromise = null;
       throw err;
     });

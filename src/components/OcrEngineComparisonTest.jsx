@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, ChevronDown, ChevronRight, GitCompare, AlertCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { loadPdf, renderPageToCanvas, DEFAULT_OCR_SCALE } from '@/lib/pdfOcrService';
-import { getProvider, getProviderMeta, PROVIDERS } from '@/lib/ocrProviders';
+import { getProvider, PROVIDERS } from '@/lib/ocrProviders';
 
 // Per-provider accent color for the bounding-box overlay.
 const STROKE = {
