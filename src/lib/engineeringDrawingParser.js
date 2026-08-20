@@ -233,10 +233,10 @@ function matchFeatureCallout(text) {
 
   // Diameter feature: "Ø<size>" / "O<size>" / "DIA<size>" (O only in strong
   // diameter context — see matchDiameter).
-  c = rest.match(new RegExp(`^(?:[Ø⌀ø]|DIA(?:\\.(?!\\d))?)\\s*${NUM}\\s*(${DIM_UNIT})?\\s*(.*)$`, 'i'));
+  c = rest.match(new RegExp(`^(?:[Ø⌀ø]|DIA(?:\\.(?!\\d))?)\\s*${NUM}\\s*${DIM_UNIT}?\\s*(.*)$`, 'i'));
   let usedO = false;
   if (!c) {
-    c = rest.match(new RegExp(`^O(?=\\s*\\d|\\s*\\.)\\s*${NUM}\\s*(${DIM_UNIT})?\\s*(.*)$`, 'i'));
+    c = rest.match(new RegExp(`^O(?=\\s*\\d|\\s*\\.)\\s*${NUM}\\s*${DIM_UNIT}?\\s*(.*)$`, 'i'));
     if (c) usedO = true;
   }
   if (c) {
@@ -250,7 +250,7 @@ function matchFeatureCallout(text) {
   }
 
   // Radius feature: "R<size>" / "SR<size>"
-  c = rest.match(new RegExp(`^(S?R)\\s*${NUM}\\s*(${DIM_UNIT})?\\s*(.*)$`, 'i'));
+  c = rest.match(new RegExp(`^(S?R)\\s*${NUM}\\s*${DIM_UNIT}?\\s*(.*)$`, 'i'));
   if (c) {
     out.feature = /^s/i.test(c[1]) ? 'spherical_radius' : 'radius';
     out.size = Number(c[2]);
@@ -261,7 +261,7 @@ function matchFeatureCallout(text) {
   }
 
   // Plain size: "<size>" with no feature prefix
-  c = rest.match(new RegExp(`^${NUM}\\s*(${DIM_UNIT})?\\s*(.*)$`, 'i'));
+  c = rest.match(new RegExp(`^${NUM}\\s*${DIM_UNIT}?\\s*(.*)$`, 'i'));
   if (c) {
     out.size = Number(c[1]);
     if (c[2]) out.unit = normUnit(c[2]);
