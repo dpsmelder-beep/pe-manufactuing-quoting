@@ -445,6 +445,104 @@ export function mergeRegions(regions, opts = {}) {
   return { merged, groups };
 }
 
+/**
+ * Decide whether two EXPANDED regions are merge candidates. Expanded boxes
+ * already carry character-height padding, so adjacency shows up as box overlap.
+ * Candidates must overlap, share a baseline (or column for vertical text), and
+ * have similar sizes — stacked lines whose padding does not overlap are left
+ * alone.
+ */
+function mergeableExpanded(a, b, opts = {}) {
+  const ix1 = Math.max(a.x, b.x);
+  const iy1 = Math.max(a.y, b.y);
+  const ix2 = Math.min(a.x + a.w, b.x + b.w);
+  const iy2 = Math.min(a.y + a.h, b.y + b.h);
+  if (ix2 <= ix1 || iy2 <= iy1) return false; // no overlap between expanded boxes
+  const overlapMin = opts.overlapMin ?? 0.4;
+  const ratioMin = opts.ratioMin ?? 0.5;
+  const vOverlap = overlapRatio(a.y, a.h, b.y, b.h);
+  const hOverlap = overlapRatio(a.x, a.w, b.x, b.w);
+  const hRatio = Math.min(a.h, b.h) / Math.max(1, Math.max(a.h, b.h));
+  const wRatio = Math.min(a.w, b.w) / Math.max(1, Math.max(a.w, b.w));
+  const horiz = vOverlap >= overlapMin && hRatio >= ratioMin;
+  const vert = hOverlap >= overlapMin && wRatio >= ratioMin;
+  return horiz || vert;
+}
+
+/**
+ * Region merging on the EXPANDED text regions (the greedy text-line regions
+ * after character-height padding). For each group of candidates the merged
+ * bounding box is the union of BOTH complete expanded regions, with ADDITIONAL
+ * character-height-based padding (1.0× long axis, 0.40× short axis, rotated for
+ * vertical text) applied around that union, clamped to the page. The merged box
+ * is meant to be cropped from the original high-resolution render — never built
+ * by stitching previously cropped images.
+ *
+ * @returns {{ merged: object[], groups: number[][] }}
+ *   merged[i] = { x, y, w, h, charH, padding, unionBox, sourceIndices }
+ */
+export function mergeExpandedRegions(expanded, bounds, opts = {}) {
+  const n = expanded.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (x) => {
+    let r = x;
+    while (parent[r] !== r) { parent[r] = parent[parent[r]]; r = parent[r]; }
+    return r;
+  };
+  const union = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[ra] = rb;
+  };
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (mergeableExpanded(expanded[i], expanded[j], opts)) union(i, j);
+    }
+  }
+  const groupsMap = {};
+  for (let i = 0; i < n; i++) {
+    const r = find(i);
+    (groupsMap[r] = groupsMap[r] || []).push(i);
+  }
+  const groups = Object.values(groupsMap);
+  const merged = groups.map((group) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let charHSum = 0;
+    for (const idx of group) {
+      const e = expanded[idx];
+      minX = Math.min(minX, e.x);
+      minY = Math.min(minY, e.y);
+      maxX = Math.max(maxX, e.x + e.w);
+      maxY = Math.max(maxY, e.y + e.h);
+      charHSum += e.charH || (e.w >= e.h ? e.h : e.w);
+    }
+    const unionBox = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    const charH = charHSum / group.length;
+    const horizontal = unionBox.w >= unionBox.h;
+    const longPad = charH * 1.0;
+    const shortPad = charH * 0.4;
+    const leftPad = horizontal ? longPad : shortPad;
+    const rightPad = horizontal ? longPad : shortPad;
+    const topPad = horizontal ? shortPad : longPad;
+    const bottomPad = horizontal ? shortPad : longPad;
+    const x = Math.max(0, Math.round(unionBox.x - leftPad));
+    const y = Math.max(0, Math.round(unionBox.y - topPad));
+    const right = Math.min(bounds.w, Math.round(unionBox.x + unionBox.w + rightPad));
+    const bottom = Math.min(bounds.h, Math.round(unionBox.y + unionBox.h + bottomPad));
+    return {
+      x,
+      y,
+      w: right - x,
+      h: bottom - y,
+      charH: Math.round(charH),
+      padding: { left: longPad, right: longPad, top: shortPad, bottom: shortPad },
+      unionBox,
+      sourceIndices: group,
+    };
+  });
+  return { merged, groups };
+}
+
 /** Crop an arbitrary bounding box (already in source-canvas coords) from a render. */
 export function cropBox(sourceCanvas, box) {
   const w = sourceCanvas.width;
