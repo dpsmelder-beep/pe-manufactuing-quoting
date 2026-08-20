@@ -139,22 +139,42 @@ export default function NeighborGrownRegionOcrTest({ url }) {
     return () => { cancelled = true; };
   }, [baseReady, maxRegions]);
 
-  // Summary from manual reviews.
+  // Summary from manual reviews — crop classification + OCR classification (independent).
   const allEntries = results.flatMap((p) => p.regions.map((r) => ({ ...r, pageNum: p.pageNum, id: `${p.pageNum}-${r.idx}` })));
   const total = allEntries.length;
-  const reviewedEntries = allEntries.filter((e) => reviews[e.id]?.rating);
-  const reviewed = reviewedEntries.length;
-  const correct = reviewedEntries.filter((e) => reviews[e.id].rating === 'correct').length;
-  const partial = reviewedEntries.filter((e) => reviews[e.id].rating === 'partial').length;
-  const incorrect = reviewedEntries.filter((e) => reviews[e.id].rating === 'incorrect').length;
-  const unreviewed = total - reviewed;
-  const exact = reviewed ? (correct / reviewed) * 100 : 0;
-  const usable = reviewed ? ((correct + partial) / reviewed) * 100 : 0;
 
-  const setRating = (id, rating) =>
-    setReviews((prev) => ({ ...prev, [id]: { ...prev[id], rating: prev[id]?.rating === rating ? null : rating, expectedText: prev[id]?.expectedText || '' } }));
+  // STEP 1 — Crop quality
+  const completeCount = allEntries.filter((e) => reviews[e.id]?.cropClass === 'complete').length;
+  const partialCount = allEntries.filter((e) => reviews[e.id]?.cropClass === 'partial').length;
+  const nonTextCount = allEntries.filter((e) => reviews[e.id]?.cropClass === 'non-text').length;
+  const multipleCount = allEntries.filter((e) => reviews[e.id]?.cropClass === 'multiple').length;
+  const cropReviewed = completeCount + partialCount + nonTextCount + multipleCount;
+  const validCropRate = total ? (completeCount / total) * 100 : 0;
+  const textDetectionRate = total ? ((completeCount + partialCount) / total) * 100 : 0;
+
+  // STEP 2 — OCR quality (ONLY complete-text crops)
+  const completeReviewed = allEntries.filter((e) => reviews[e.id]?.cropClass === 'complete' && reviews[e.id]?.ocrClass);
+  const ocrReviewed = completeReviewed.length;
+  const ocrCorrect = completeReviewed.filter((e) => reviews[e.id].ocrClass === 'correct').length;
+  const ocrPartial = completeReviewed.filter((e) => reviews[e.id].ocrClass === 'partial').length;
+  const ocrIncorrect = completeReviewed.filter((e) => reviews[e.id].ocrClass === 'incorrect').length;
+  const ocrExact = ocrReviewed ? (ocrCorrect / ocrReviewed) * 100 : 0;
+  const ocrUsable = ocrReviewed ? ((ocrCorrect + ocrPartial) / ocrReviewed) * 100 : 0;
+
+  const setCropClass = (id, cropClass) =>
+    setReviews((prev) => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        cropClass: prev[id]?.cropClass === cropClass ? null : cropClass,
+        // switching away from "complete" invalidates OCR classification
+        ocrClass: (cropClass === 'complete') ? (prev[id]?.ocrClass || null) : null,
+      },
+    }));
+  const setOcrClass = (id, ocrClass) =>
+    setReviews((prev) => ({ ...prev, [id]: { ...prev[id], ocrClass: prev[id]?.ocrClass === ocrClass ? null : ocrClass } }));
   const setExpected = (id, expectedText) =>
-    setReviews((prev) => ({ ...prev, [id]: { ...prev[id], rating: prev[id]?.rating || null, expectedText } }));
+    setReviews((prev) => ({ ...prev, [id]: { ...prev[id], expectedText } }));
 
   return (
     <div className="border border-slate-200 rounded-lg mt-3">
@@ -187,20 +207,36 @@ export default function NeighborGrownRegionOcrTest({ url }) {
             </label>
           </div>
 
-          {/* Summary */}
+          {/* Summary — Region detection / crop quality */}
           <div className="rounded-lg border border-slate-200 overflow-hidden">
-            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-700">Manual Review Summary</div>
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-700">Region Detection / Crop Quality</div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 divide-x divide-slate-100">
-              <Stat label="Total tested" value={total} />
-              <Stat label="Correct" value={correct} color="text-green-600" />
-              <Stat label="Partial" value={partial} color="text-amber-600" />
-              <Stat label="Incorrect" value={incorrect} color="text-red-600" />
-              <Stat label="Unreviewed" value={unreviewed} />
-              <Stat label="Exact accuracy" value={reviewed ? `${exact.toFixed(0)}%` : '—'} color="text-green-700" />
-              <Stat label="Usable accuracy" value={reviewed ? `${usable.toFixed(0)}%` : '—'} color="text-emerald-700" />
+              <Stat label="Total Regions" value={total} />
+              <Stat label="Complete Text" value={completeCount} color="text-green-600" />
+              <Stat label="Partial Text" value={partialCount} color="text-amber-600" />
+              <Stat label="Non-Text / Geometry" value={nonTextCount} color="text-slate-500" />
+              <Stat label="Multiple / Mixed" value={multipleCount} color="text-violet-600" />
+              <Stat label="Valid Crop Rate" value={total ? `${validCropRate.toFixed(0)}%` : '—'} color="text-green-700" />
+              <Stat label="Text Detection Rate" value={total ? `${textDetectionRate.toFixed(0)}%` : '—'} color="text-emerald-700" />
             </div>
             <div className="px-3 py-1.5 text-[10px] text-slate-400">
-              Exact = Correct / Reviewed · Usable = (Correct + Partial) / Reviewed · Based on manual review, not OCR confidence.
+              Valid Crop Rate = Complete Text / Total · Text Detection Rate = (Complete + Partial) / Total
+            </div>
+          </div>
+
+          {/* Summary — OCR quality (complete-text crops only) */}
+          <div className="rounded-lg border border-slate-200 overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-700">OCR Quality (Complete Text crops only)</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-slate-100">
+              <Stat label="Complete reviewed by OCR" value={ocrReviewed} />
+              <Stat label="OCR Correct" value={ocrCorrect} color="text-green-600" />
+              <Stat label="OCR Partial" value={ocrPartial} color="text-amber-600" />
+              <Stat label="OCR Incorrect" value={ocrIncorrect} color="text-red-600" />
+              <Stat label="Exact OCR Accuracy" value={ocrReviewed ? `${ocrExact.toFixed(0)}%` : '—'} color="text-green-700" />
+              <Stat label="Usable OCR Accuracy" value={ocrReviewed ? `${ocrUsable.toFixed(0)}%` : '—'} color="text-emerald-700" />
+            </div>
+            <div className="px-3 py-1.5 text-[10px] text-slate-400">
+              Exact = OCR Correct / Complete reviewed · Usable = (OCR Correct + OCR Partial) / Complete reviewed · Non-text, partial & multiple crops excluded.
             </div>
           </div>
 
@@ -229,61 +265,92 @@ export default function NeighborGrownRegionOcrTest({ url }) {
                 <div className="divide-y divide-slate-100">
                   {res.regions.map((r) => {
                     const id = `${pg.pageNum}-${r.idx}`;
-                    const rating = reviews[id]?.rating;
+                    const rv = reviews[id] || {};
+                    const cropClass = rv.cropClass;
+                    const ocrClass = rv.ocrClass;
+                    const ocrEnabled = cropClass === 'complete';
                     return (
                       <div key={r.idx} className="p-3 grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-                        {/* Original crop */}
-                        <div className="lg:col-span-3">
-                          <div className="text-[10px] text-slate-400 mb-1">Original crop #{r.idx + 1}</div>
+                        {/* STEP 1 — crop image (prominent) */}
+                        <div className="lg:col-span-4">
+                          <div className="text-[10px] text-slate-400 mb-1 font-semibold">CROP #{r.idx + 1}</div>
                           {r.cropDataUrl ? (
-                            <img src={r.cropDataUrl} alt={`crop ${r.idx + 1}`} className="w-full max-h-28 object-contain bg-slate-50 rounded border border-slate-200" />
+                            <img src={r.cropDataUrl} alt={`crop ${r.idx + 1}`} className="w-full max-h-32 object-contain bg-white border border-slate-300 rounded" />
                           ) : (
-                            <div className="h-24 bg-slate-100 rounded" />
+                            <div className="h-28 bg-slate-100 rounded border border-slate-200" />
                           )}
                         </div>
-                        {/* OCR result */}
-                        <div className="lg:col-span-5">
-                          <div className="text-[10px] text-slate-400 mb-1">OCR result</div>
-                          <div className="text-sm font-mono text-slate-800 break-words min-h-[2.5rem] bg-slate-50 rounded border border-slate-200 px-2 py-1.5">
-                            {r.text || <span className="text-slate-300">(no text)</span>}
-                          </div>
-                          <div className="flex gap-3 mt-1 text-[10px] text-slate-500">
-                            <span>orientation: <b className="text-slate-700">{r.orientation}</b></span>
-                            <span>confidence: <b className="text-slate-700">{r.confidence}</b></span>
-                            {r.error && <span className="text-red-500">error: {r.error}</span>}
-                          </div>
+
+                        {/* STEP 1 — crop classification */}
+                        <div className="lg:col-span-4 space-y-1.5">
+                          <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Step 1 · Crop Classification</div>
+                          {[
+                            { k: 'complete', label: 'Complete Text', color: 'green' },
+                            { k: 'partial', label: 'Partial Text', color: 'amber' },
+                            { k: 'non-text', label: 'Non-Text / Geometry', color: 'slate' },
+                            { k: 'multiple', label: 'Multiple / Mixed', color: 'violet' },
+                          ].map((b) => (
+                            <button
+                              key={b.k}
+                              onClick={() => setCropClass(id, b.k)}
+                              className={`block w-full text-left px-2.5 py-1 rounded text-xs font-medium border transition ${
+                                cropClass === b.k
+                                  ? b.color === 'green' ? 'bg-green-600 text-white border-green-600'
+                                    : b.color === 'amber' ? 'bg-amber-500 text-white border-amber-500'
+                                      : b.color === 'violet' ? 'bg-violet-600 text-white border-violet-600'
+                                        : 'bg-slate-600 text-white border-slate-600'
+                                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                              }`}
+                            >
+                              {b.label}
+                            </button>
+                          ))}
                         </div>
-                        {/* Manual evaluation */}
-                        <div className="lg:col-span-4 space-y-2">
-                          <div className="text-[10px] text-slate-400">Manual evaluation</div>
-                          <div className="flex gap-1.5">
-                            {[
-                              { k: 'correct', label: 'Correct', cls: 'correct' },
-                              { k: 'partial', label: 'Partially', cls: 'partial' },
-                              { k: 'incorrect', label: 'Incorrect', cls: 'incorrect' },
-                            ].map((b) => (
-                              <button
-                                key={b.k}
-                                onClick={() => setRating(id, b.k)}
-                                className={`px-2.5 py-1 rounded text-xs font-medium border transition ${
-                                  rating === b.k
-                                    ? b.cls === 'correct' ? 'bg-green-600 text-white border-green-600'
-                                      : b.cls === 'partial' ? 'bg-amber-500 text-white border-amber-500'
-                                        : 'bg-red-600 text-white border-red-600'
-                                    : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-                                }`}
-                              >
-                                {b.label}
-                              </button>
-                            ))}
-                          </div>
-                          <input
-                            type="text"
-                            placeholder="Expected text (optional)"
-                            value={reviews[id]?.expectedText || ''}
-                            onChange={(e) => setExpected(id, e.target.value)}
-                            className="w-full border border-input rounded px-2 py-1 text-xs"
-                          />
+
+                        {/* STEP 2 — OCR classification (only when Complete Text) */}
+                        <div className="lg:col-span-4 space-y-1.5">
+                          <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Step 2 · OCR Classification</div>
+                          {!ocrEnabled ? (
+                            <p className="text-[11px] text-slate-400 italic px-1 py-2">
+                              Enabled only for “Complete Text” crops.
+                            </p>
+                          ) : (
+                            <>
+                              <div className="text-[10px] text-slate-400">OCR result</div>
+                              <div className="text-sm font-mono text-slate-800 break-words min-h-[2rem] bg-slate-50 rounded border border-slate-200 px-2 py-1">
+                                {r.text || <span className="text-slate-300">(no text)</span>}
+                              </div>
+                              <div className="flex gap-3 text-[10px] text-slate-500">
+                                <span>orientation: <b className="text-slate-700">{r.orientation}</b></span>
+                                <span>confidence: <b className="text-slate-700">{r.confidence}</b></span>
+                                {r.error && <span className="text-red-500">error: {r.error}</span>}
+                              </div>
+                              <div className="flex gap-1.5 flex-wrap">
+                                {[
+                                  { k: 'correct', label: 'OCR Correct', cls: 'bg-green-600 text-white border-green-600' },
+                                  { k: 'partial', label: 'OCR Partial', cls: 'bg-amber-500 text-white border-amber-500' },
+                                  { k: 'incorrect', label: 'OCR Incorrect', cls: 'bg-red-600 text-white border-red-600' },
+                                ].map((b) => (
+                                  <button
+                                    key={b.k}
+                                    onClick={() => setOcrClass(id, b.k)}
+                                    className={`px-2 py-1 rounded text-xs font-medium border transition ${
+                                      ocrClass === b.k ? b.cls : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    {b.label}
+                                  </button>
+                                ))}
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Expected text (optional)"
+                                value={rv.expectedText || ''}
+                                onChange={(e) => setExpected(id, e.target.value)}
+                                className="w-full border border-input rounded px-2 py-1 text-xs"
+                              />
+                            </>
+                          )}
                         </div>
                       </div>
                     );
