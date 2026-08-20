@@ -3,6 +3,7 @@ import { Loader2, ChevronDown, ChevronRight, Eraser } from 'lucide-react';
 import { loadPdf, renderPageToCanvas, HIGH_OCR_SCALE } from '@/lib/pdfOcrService';
 import { detectTextRegions } from '@/lib/textRegionDetection';
 import { removeEngineeringLines } from '@/lib/engineeringLineRemoval';
+import { loadOpenCV } from '@/lib/opencvLoader';
 
 const MAX_CANVAS_DIM = 3000; // kept lower than other tests — OpenCV mats are heavy
 
@@ -93,8 +94,16 @@ export default function EngineeringLineRemovalTest({ url }) {
     let cancelled = false;
     const recompute = async () => {
       setComputing(true);
-      setStatus('Removing long lines with OpenCV…');
       try {
+        setStatus('Loading OpenCV.js locally…');
+        try {
+          await loadOpenCV();
+        } catch (err) {
+          setError(true);
+          setLoadError(err?.message || String(err));
+          return;
+        }
+        setStatus('OpenCV.js loaded locally');
         const pageList = pages.map((pg) => pg.pageNum);
         for (const pageNum of pageList) {
           if (cancelled) return;
@@ -194,8 +203,8 @@ export default function EngineeringLineRemovalTest({ url }) {
               </div>
               <div className="p-3 grid grid-cols-1 xl:grid-cols-3 gap-3">
                 <ImageCard label="1 · Original Analysis Image (B&W)" dataUrl={pg.originalDataUrl} />
-                <ImageCard label="2 · Detected Drawing Lines (to remove)" dataUrl={pg.detectedDataUrl} placeholder="Detecting lines…" ready={!!pg.detectedDataUrl} />
-                <ImageCard label="3 · Text Analysis Image (lines removed)" dataUrl={pg.textDataUrl} placeholder="Removing lines…" ready={!!pg.textDataUrl} />
+                <ImageCard label="2 · Detected Drawing Lines (to remove)" dataUrl={pg.detectedDataUrl} placeholder="Detecting lines…" ready={computing && !error} />
+                <ImageCard label="3 · Text Analysis Image (lines removed)" dataUrl={pg.textDataUrl} placeholder="Removing lines…" ready={computing && !error} />
               </div>
             </div>
           ))}
