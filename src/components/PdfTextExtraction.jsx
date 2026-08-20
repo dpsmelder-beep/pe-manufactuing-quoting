@@ -22,6 +22,8 @@ export default function PdfTextExtraction({ url }) {
   const [ocrStatus, setOcrStatus] = useState(''); // live status string
   const [ocrResults, setOcrResults] = useState([]); // [{ page, text, confidence, error? }]
   const [extractionMode, setExtractionMode] = useState(''); // 'PDF Embedded Text' | 'OCR' | 'Mixed'
+  const [pagesPdf, setPagesPdf] = useState(0);
+  const [pagesOcr, setPagesOcr] = useState(0);
   const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -43,6 +45,8 @@ export default function PdfTextExtraction({ url }) {
       setOcrStatus('');
       setOcrResults([]);
       setExtractionMode('');
+      setPagesPdf(0);
+      setPagesOcr(0);
       try {
         const pdf = await loadPdf(url);
         if (cancelled) return;
@@ -67,7 +71,8 @@ export default function PdfTextExtraction({ url }) {
         // Step 2-4: per page, use embedded text if sufficient, otherwise render + OCR.
         const unified = [];
         const ocrNeeded = stats.filter((s) => s.charCount < EMBEDDED_TEXT_THRESHOLD).map((s) => s.page);
-        const pagesPdf = stats.length - ocrNeeded.length;
+        const embeddedPages = stats.length - ocrNeeded.length;
+        setPagesPdf(embeddedPages);
 
         // Emit embedded-text items for sufficient pages right away.
         stats.forEach((s) => {
@@ -126,8 +131,9 @@ export default function PdfTextExtraction({ url }) {
         if (cancelled) return;
 
         // Overall extraction mode across all pages (computed by the service).
-        const pagesOcr = renders.filter((r) => !r.error).length;
-        setExtractionMode(computeExtractionMode(pagesPdf, pagesOcr));
+        const ocrPages = renders.filter((r) => !r.error).length;
+        setPagesOcr(ocrPages);
+        setExtractionMode(computeExtractionMode(embeddedPages, ocrPages));
         setOcrStatus('OCR complete');
       } catch (err) {
         if (!cancelled) {
@@ -168,12 +174,8 @@ export default function PdfTextExtraction({ url }) {
       >
         <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
           {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          Drawing Extraction Test
-          {!loading && !error && (
-            <span className="text-xs text-slate-400 font-normal">
-              ({extractedItems.length} text item{extractedItems.length === 1 ? '' : 's'} found · {rawCount} raw · {pageCount} page{pageCount === 1 ? '' : 's'})
-            </span>
-          )}
+          Drawing Extraction
+          <span className="text-xs text-slate-400 font-normal">Diagnostic (dev/test)</span>
         </span>
         <span className="flex items-center gap-2">
           {extractionMode && (
@@ -190,112 +192,20 @@ export default function PdfTextExtraction({ url }) {
               {extractionMode}
             </span>
           )}
-          <span className="text-xs text-slate-400">Automatic extraction</span>
+          {ocrStatus && ocrStatus !== 'OCR complete' && (
+            <span className="flex items-center gap-1 text-xs text-slate-500">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> {ocrStatus}
+            </span>
+          )}
         </span>
       </button>
 
       {open && (
-      <div className="p-4 space-y-3">
-      {loading && (
-        <div className="flex items-center gap-2 text-sm text-slate-500 py-4">
-          <Loader2 className="w-4 h-4 animate-spin" /> Extracting text from PDF…
-        </div>
-      )}
-
-      {!loading && !error && pageStats.length > 0 && (
-        <div className="rounded-lg border border-slate-200 overflow-hidden">
-          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600">
-            Per-page embedded text check
-          </div>
-          <div className="divide-y divide-slate-100">
-            {pageStats.map((s) => {
-              const ocr = s.charCount < 20;
-              return (
-                <div key={s.page} className="flex items-center justify-between px-3 py-2 text-xs">
-                  <span className="text-slate-600">Page {s.page}</span>
-                  <span className="flex items-center gap-3">
-                    <span className="font-mono text-slate-500">{s.charCount} chars</span>
-                    <span
-                      className={cn(
-                        'px-2 py-0.5 rounded-full font-medium',
-                        ocr
-                          ? 'bg-amber-100 text-amber-700'
-                          : 'bg-emerald-100 text-emerald-700'
-                      )}
-                    >
-                      {ocr ? 'OCR Required' : 'Embedded Text'}
-                    </span>
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {!loading && !error && ocrRenders.length > 0 && (
-        <div className="rounded-lg border border-slate-200 overflow-hidden">
-          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600">
-            OCR render preview (off-screen, scale 3.0)
-          </div>
-          <div className="divide-y divide-slate-100">
-            {ocrRenders.map((r) => (
-              <div key={r.page} className="px-3 py-2 text-xs flex items-center gap-2">
-                <span
-                  className={cn(
-                    'px-1.5 py-0.5 rounded font-mono',
-                    r.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
-                  )}
-                >
-                  p{r.page}
-                </span>
-                <span className={cn('font-mono', r.status === 'success' ? 'text-emerald-700' : 'text-red-600')}>
-                  {r.message}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!loading && !error && ocrRenders.length > 0 && (
-        <div className="rounded-lg border border-slate-200 overflow-hidden">
-          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600">
-            Tesseract.js OCR (English)
-          </div>
-          {ocrStatus && (
-            <div className="px-3 py-2 flex items-center gap-2 text-xs text-slate-600 border-b border-slate-100">
-              {ocrStatus !== 'OCR complete' && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />}
-              <span className="font-mono">{ocrStatus}</span>
+        <div className="p-4 space-y-4">
+          {loading && (
+            <div className="flex items-center gap-2 text-sm text-slate-500 py-4">
+              <Loader2 className="w-4 h-4 animate-spin" /> Extracting text from PDF…
             </div>
-          )}
-          {ocrResults.length === 0 && !ocrStatus && (
-            <div className="px-3 py-3 text-xs text-slate-400">No OCR-required pages.</div>
-          )}
-          <div className="divide-y divide-slate-100">
-            {ocrResults.map((res) => (
-              <div key={res.page} className="px-3 py-3 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-mono px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">Page {res.page}</span>
-                  {res.error ? (
-                    <span className="text-red-600 font-mono">error</span>
-                  ) : (
-                    <span className="font-mono text-slate-500">
-                      confidence {res.confidence != null ? `${Math.round(res.confidence)}%` : 'n/a'}
-                    </span>
-                  )}
-                </div>
-                {res.error ? (
-                  <p className="text-xs text-red-600">{res.error}</p>
-                ) : (
-                  <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-slate-50 rounded p-2 text-slate-800 max-h-64 overflow-y-auto">
-                    {res.text || '(no text recognized)'}
-                  </pre>
-                )}
-              </div>
-            ))}
-          </div>
-          </div>
           )}
 
           {error && !loading && (
@@ -306,105 +216,124 @@ export default function PdfTextExtraction({ url }) {
             </div>
           )}
 
-          {!loading && !error && extractedItems.length === 0 && (
-            <div className="py-6 px-4 bg-slate-50 rounded-lg space-y-2 text-sm text-slate-600">
-              <p className="font-medium text-slate-700">No text was found in this PDF.</p>
-              <p className="text-xs text-slate-500">
-                PDF.js returned <span className="font-mono">{rawCount}</span> raw text item(s) across <span className="font-mono">{pageCount}</span> page(s), but none contained actual text content.
-              </p>
-              <p className="text-xs text-slate-500">
-                This usually means the drawing text is stored as <span className="font-medium">vector outlines/paths</span> (common with CAD-exported PDFs) or as a <span className="font-medium">rasterized scanned image</span>, rather than a real embedded text layer. PDF.js <span className="font-mono">getTextContent()</span> can only read actual text operators, not drawn shapes or pixels — so OCR would be required to recover the text.
-              </p>
-            </div>
-          )}
-
-          {!loading && !error && extractedItems.length > 0 && (
+          {!loading && !error && (
             <>
-              <div className="flex gap-1 border-b border-slate-200">
-                {[
-                  ['text', 'Readable Text'],
-                  ['table', 'Item Table'],
-                  ['json', 'Raw JSON'],
-                ].map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setView(key)}
-                    className={cn(
-                      'px-3 py-1.5 text-xs font-medium transition border-b-2 -mb-px',
-                      view === key
-                        ? 'border-primary text-primary'
-                        : 'border-transparent text-slate-500 hover:text-slate-700'
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
+              {/* Extraction Summary */}
+              <div className="rounded-lg border border-slate-200 overflow-hidden">
+                <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-700">
+                  Extraction Summary
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100">
+                  <SummaryStat label="Pages" value={pageCount} />
+                  <SummaryStat label="Embedded Text" value={pagesPdf} />
+                  <SummaryStat label="OCR" value={pagesOcr} />
+                  <SummaryStat label="Text Items" value={extractedItems.length} />
+                </div>
               </div>
 
-              {view === 'text' && (
-                <div className="space-y-2 max-h-96 overflow-y-auto bg-slate-50 rounded-lg p-3 text-sm font-mono">
-                  {readableLines.map((line, i) => (
-                    <div key={i} className="flex gap-3">
-                      <span className="text-slate-400 shrink-0 w-20">p{line.page} y{line.y}</span>
-                      <span className="text-slate-800 whitespace-pre-wrap break-words">{line.text || '\u00A0'}</span>
+              {extractedItems.length === 0 ? (
+                <div className="py-6 px-4 bg-slate-50 rounded-lg space-y-2 text-sm text-slate-600">
+                  <p className="font-medium text-slate-700">No text was found in this PDF.</p>
+                  <p className="text-xs text-slate-500">
+                    This usually means the drawing text is stored as vector outlines/paths or a rasterized scanned image rather than an embedded text layer, so OCR is required to recover it.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Extracted Text */}
+                  <div className="rounded-lg border border-slate-200 overflow-hidden">
+                    <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-700">
+                      Extracted Text
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {view === 'table' && (
-                <div className="max-h-96 overflow-auto rounded-lg border border-slate-200">
-                  <table className="w-full text-xs">
-                    <thead className="bg-slate-100 sticky top-0">
-                      <tr className="text-left text-slate-600">
-                        <th className="px-2 py-1.5">#</th>
-                        <th className="px-2 py-1.5">Text</th>
-                        <th className="px-2 py-1.5">Page</th>
-                        <th className="px-2 py-1.5">X</th>
-                        <th className="px-2 py-1.5">Y</th>
-                        <th className="px-2 py-1.5">Width</th>
-                        <th className="px-2 py-1.5">Height</th>
-                        <th className="px-2 py-1.5">Source</th>
-                        <th className="px-2 py-1.5">Confidence</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {extractedItems.map((it, i) => (
-                        <tr key={i} className={i % 2 ? 'bg-slate-50' : 'bg-white'}>
-                          <td className="px-2 py-1 text-slate-400">{i + 1}</td>
-                          <td className="px-2 py-1 font-mono whitespace-pre-wrap break-words max-w-md">{it.text}</td>
-                          <td className="px-2 py-1">{it.page}</td>
-                          <td className="px-2 py-1">{it.x}</td>
-                          <td className="px-2 py-1">{it.y}</td>
-                          <td className="px-2 py-1">{it.width}</td>
-                          <td className="px-2 py-1">{it.height}</td>
-                          <td className="px-2 py-1">
-                            <span
-                              className={cn(
-                                'px-1.5 py-0.5 rounded-full font-medium',
-                                it.source === 'ocr' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
-                              )}
-                            >
-                              {it.source === 'ocr' ? 'OCR' : 'PDF Text'}
-                            </span>
-                          </td>
-                          <td className="px-2 py-1 font-mono">{it.confidence != null ? `${it.confidence}%` : '—'}</td>
-                        </tr>
+                    <div className="max-h-64 overflow-y-auto bg-slate-50 p-3 text-sm font-mono space-y-1">
+                      {readableLines.map((line, i) => (
+                        <div key={i} className="flex gap-3">
+                          <span className="text-slate-400 shrink-0 w-16">p{line.page}</span>
+                          <span className="text-slate-800 whitespace-pre-wrap break-words">{line.text || '\u00A0'}</span>
+                        </div>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                    </div>
+                  </div>
 
-              {view === 'json' && (
-                <pre className="max-h-96 overflow-auto bg-slate-900 text-slate-100 rounded-lg p-3 text-xs font-mono">
-                  {JSON.stringify(extractedItems, null, 2)}
-                </pre>
+                  {/* Recognized Items */}
+                  <div className="rounded-lg border border-slate-200 overflow-hidden">
+                    <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-700">
+                      Recognized Items
+                    </div>
+                    <div className="max-h-80 overflow-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-slate-100 sticky top-0">
+                          <tr className="text-left text-slate-600">
+                            <th className="px-2 py-1.5">Text</th>
+                            <th className="px-2 py-1.5">Page</th>
+                            <th className="px-2 py-1.5">Source</th>
+                            <th className="px-2 py-1.5">X</th>
+                            <th className="px-2 py-1.5">Y</th>
+                            <th className="px-2 py-1.5">Width</th>
+                            <th className="px-2 py-1.5">Height</th>
+                            <th className="px-2 py-1.5">Confidence</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {extractedItems.map((it, i) => (
+                            <tr key={i} className={i % 2 ? 'bg-slate-50' : 'bg-white'}>
+                              <td className="px-2 py-1 font-mono whitespace-pre-wrap break-words max-w-xs">{it.text}</td>
+                              <td className="px-2 py-1">{it.page}</td>
+                              <td className="px-2 py-1">
+                                <span
+                                  className={cn(
+                                    'px-1.5 py-0.5 rounded-full font-medium',
+                                    it.source === 'ocr' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                                  )}
+                                >
+                                  {it.source === 'ocr' ? 'OCR' : 'PDF Text'}
+                                </span>
+                              </td>
+                              <td className="px-2 py-1 font-mono">{it.x}</td>
+                              <td className="px-2 py-1 font-mono">{it.y}</td>
+                              <td className="px-2 py-1 font-mono">{it.width}</td>
+                              <td className="px-2 py-1 font-mono">{it.height}</td>
+                              <td className="px-2 py-1 font-mono">{it.confidence != null ? `${it.confidence}%` : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Raw JSON (expandable) */}
+                  <div className="rounded-lg border border-slate-200 overflow-hidden">
+                    <button
+                      onClick={() => setView(view === 'json' ? 'text' : 'json')}
+                      className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+                    >
+                      <span className="flex items-center gap-2">
+                        {view === 'json' ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                        Raw JSON
+                      </span>
+                      <span className="text-xs text-slate-400 font-normal">{extractedItems.length} items</span>
+                    </button>
+                    {view === 'json' && (
+                      <pre className="max-h-80 overflow-auto bg-slate-900 text-slate-100 p-3 text-xs font-mono">
+                        {JSON.stringify(extractedItems, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                </>
               )}
             </>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function SummaryStat({ label, value }) {
+  return (
+    <div className="px-3 py-2.5">
+      <div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div>
+      <div className="text-lg font-semibold text-slate-800">{value}</div>
     </div>
   );
 }
