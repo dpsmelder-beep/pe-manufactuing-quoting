@@ -80,6 +80,7 @@ const FINISH_KEYWORDS = [
   'passivate', 'passivation', 'passivated',
   'black oxide', 'zinc plating', 'zinc plated', 'zinc plate',
   'nickel plating', 'nickel plated', 'nickel plate',
+  'plate', 'plating', 'plated',
   'tin plating', 'tin plated', 'silver plating', 'gold plating',
   'chromate', 'phosphate', 'phosphating',
   'galvanize', 'galvanized', 'galvanising', 'galvanizing',
@@ -290,37 +291,70 @@ function matchQuantity(text) {
 }
 
 function matchFinish(text) {
+  const original = text.trim();
   // 1) Surface roughness: Ra 1.6 / Rz 3.2 (must have Ra/Rz prefix).
   let m = text.match(/R[aAzZ]\s*(\d+(?:\.\d+)?)/);
   if (m) {
     const sym = /rz/i.test(text) ? 'Rz' : 'Ra';
-    return { category: 'finishes', value: Number(m[1]), unit: null, type: 'surface_roughness', spec: `${sym} ${m[1]}` };
+    return { category: 'finishes', type: 'surface_roughness', value: `${sym} ${m[1]}`, original_text: original };
   }
-  // 2) Explicit FINISH prefix.
+  // 2) Explicit FINISH prefix — classify the associated value.
   m = text.match(/\b(?:SURFACE\s+)?FINISH(?:ED)?\s*[:=]?\s*(.+)/i);
-  if (m) return { category: 'finishes', value: null, unit: null, type: 'finish_prefix', spec: m[1].trim() };
-  // 3) Known finish keywords.
-  const lower = text.toLowerCase();
+  if (m && m[1].trim()) {
+    return { category: 'finishes', type: 'finish', value: m[1].trim(), original_text: original };
+  }
+  // 3) Known finish keywords (anodize, passivate, plate, ...), word-bounded.
   for (const kw of FINISH_KEYWORDS) {
-    if (lower.includes(kw)) return { category: 'finishes', value: null, unit: null, type: 'finish_keyword', spec: kw };
+    const re = new RegExp(`\\b${kw.replace(/\s+/g, '\\s+')}\\b`, 'i');
+    if (re.test(text)) {
+      return { category: 'finishes', type: 'finish', value: original, original_text: original };
+    }
   }
   return null;
 }
 
 function matchMaterial(text) {
-  // 1) MATERIAL / MAT'L / MATL prefix — capture the trailing spec.
+  const original = text.trim();
+  // 1) MATERIAL / MAT'L / MATL prefix — classify the associated value.
   let m = text.match(/\bMAT(?:ERIAL|'L|L)\.?\s*[:=]?\s*(.+)/i);
-  if (m) return { category: 'materials', value: null, unit: null, type: 'material_prefix', spec: m[1].trim() };
-  // 2) Known material keywords.
+  if (m && m[1].trim()) {
+    return { category: 'materials', type: 'material', value: m[1].trim(), original_text: original };
+  }
+  // 2) Known material keywords (e.g. "304 Stainless Steel", "Brass"). The full
+  //    original text is kept as the value — no keyword dictionary is built.
   for (const kw of MATERIAL_KEYWORDS) {
     const re = new RegExp(`\\b${kw.replace(/\s+/g, '\\s+')}\\b`, 'i');
-    if (re.test(text)) return { category: 'materials', value: null, unit: null, type: 'material_keyword', spec: kw };
+    if (re.test(text)) {
+      return { category: 'materials', type: 'material', value: original, original_text: original };
+    }
   }
   // 3) Common alloy / grade designations (e.g. 6061-T6, 304, 17-4PH, A36, 12L14).
   m = text.match(
     /\b(6061|6063|7075|5052|2024|3003)(?:[-_]?(T[0-9]+))?|\b(303|304|316L?|17-4(?:PH)?|410|420|1018|1045|12L14|4140|4340|8620|A36|O1|D2|A2|S7)(?:\b)/i
   );
-  if (m) return { category: 'materials', value: null, unit: null, type: 'material_alloy', spec: m[0].trim() };
+  if (m) {
+    return { category: 'materials', type: 'material', value: m[0].trim(), original_text: original };
+  }
+  return null;
+}
+
+/**
+ * Basic specification labels with an associated value (e.g. "SIZE: 2.0 x 1.0").
+ * Conservative: the label keyword must be followed by a colon or equals sign,
+ * and there must be a value to classify.
+ */
+function matchSpecification(text) {
+  const original = text.trim();
+  const m = text.match(/\bSIZE\.?\s*[:=]\s*(.+)/i);
+  if (m && m[1].trim()) {
+    return {
+      category: 'specifications',
+      type: 'specification',
+      label: 'SIZE',
+      value: m[1].trim(),
+      original_text: original,
+    };
+  }
   return null;
 }
 
@@ -498,6 +532,7 @@ const MATCHERS = [
   matchQuantity,
   matchFinish,
   matchMaterial,
+  matchSpecification,
   matchDimension,
   matchNote,
 ];
@@ -654,6 +689,7 @@ export const CATEGORIES = [
   'notes',
   'unclassified',
   'possible_limit_dimensions',
+  'specifications',
 ];
 
 /**
@@ -662,7 +698,7 @@ export const CATEGORIES = [
  * @param {Array} items - standardized items from the PDF.js / PaddleOCR pipeline
  * @returns {{ dimensions:[], radii:[], diameters:[], quantities:[],
  *            materials:[], finishes:[], notes:[], unclassified:[],
- *            possible_limit_dimensions:[] }}
+ *            possible_limit_dimensions:[], specifications:[] }}
  */
 export function parseDrawingItems(items) {
   const out = {
@@ -675,6 +711,7 @@ export function parseDrawingItems(items) {
     notes: [],
     unclassified: [],
     possible_limit_dimensions: [],
+    specifications: [],
   };
   for (const item of items || []) {
     const entry = parseItem(item);
