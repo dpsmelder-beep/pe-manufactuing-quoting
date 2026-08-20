@@ -11,8 +11,9 @@
 //   2. Two-pass 8-connectivity connected-component labeling on dark pixels.
 //   3. Keep only "character-like" components (size / aspect filters) — this
 //      rejects long geometry lines and huge filled regions.
-//   4. Group components into rows by vertical alignment, then split each row
-//      into rectangular regions by horizontal character spacing.
+//   4. Group components into probable text lines by extending left/right while
+//      neighbors share a baseline, have similar heights, and are reasonably
+//      spaced; a bounding box is created only after the line is formed.
 //   5. Reject overly large regions that are obviously whole-drawing geometry.
 
 import { toGrayscale, applyContrast, threshold } from './imagePreprocessing';
@@ -172,35 +173,48 @@ export function detectTextRegions(sourceCanvas, opts = {}) {
   const medianCharH = charHs.length ? charHs[Math.floor(charHs.length / 2)] : h * 0.02;
   const medianCharW = charWs.length ? charWs[Math.floor(charWs.length / 2)] : w * 0.01;
 
-  // 4) Group components into rows by vertical alignment.
-  const rowTol = medianCharH * (opts.rowTolFactor ?? 0.6);
-  const sorted = keep.slice().sort((a, b) => a.cy - b.cy);
-  const rows = [];
-  for (const c of sorted) {
-    let placed = false;
-    for (const r of rows) {
-      if (Math.abs(c.cy - r.cy) <= rowTol) { r.members.push(c); placed = true; break; }
-    }
-    if (!placed) rows.push({ cy: c.cy, members: [c] });
-  }
-
-  // Split each row into regions by horizontal character spacing.
-  const maxGap = Math.max(medianCharW * (opts.maxGapFactor ?? 6), medianCharH * 3);
+  // 4) Greedy text-line grouping: build a probable line by extending left and
+  //    right while neighboring components share a baseline (substantial vertical
+  //    overlap), have similar heights, and are reasonably spaced. A bounding
+  //    box is created only after the line is formed — never per component.
+  const spacingThr = Math.max(medianCharW * (opts.spacingFactor ?? 2), medianCharH * (opts.maxGapFactor ?? 1.5));
+  const baselineOverlapMin = opts.baselineOverlapMin ?? 0.4;
+  const heightRatioMin = opts.heightRatioMin ?? 0.4;
   const minComponents = opts.minComponentsPerRegion ?? 2;
   const regions = [];
-  for (const r of rows) {
-    r.members.sort((a, b) => a.cx - b.cx);
-    let group = [];
-    let prevRight = null;
-    for (const c of r.members) {
-      if (prevRight !== null && c.x - prevRight > maxGap) {
-        flushGroup(group, regions, minComponents);
-        group = [];
+  const byX = keep.map((c, i) => ({ c, i })).sort((a, b) => a.c.x - b.c.x);
+  const used = new Array(keep.length).fill(false);
+  for (let k = 0; k < byX.length; k++) {
+    if (used[byX[k].i]) continue;
+    const group = [byX[k]];
+    used[byX[k].i] = true;
+    let changed = true;
+    while (changed) {
+      changed = false;
+      let lx = Infinity, ly = Infinity, rx = -Infinity, by = -Infinity;
+      for (const g of group) {
+        const c = g.c;
+        if (c.x < lx) lx = c.x;
+        if (c.y < ly) ly = c.y;
+        if (c.x + c.w > rx) rx = c.x + c.w;
+        if (c.y + c.h > by) by = c.y + c.h;
       }
-      group.push(c);
-      prevRight = c.x + c.w;
+      const hs = group.map((g) => g.c.h).sort((a, b) => a - b);
+      const medH = hs.length ? hs[Math.floor(hs.length / 2)] : medianCharH;
+      for (let m = 0; m < byX.length; m++) {
+        const idx = byX[m].i;
+        if (used[idx]) continue;
+        const c = byX[m].c;
+        const gap = c.x >= rx ? c.x - rx : c.x + c.w <= lx ? lx - (c.x + c.w) : 0;
+        if (gap > spacingThr) continue;
+        if (overlapRatio(ly, by - ly, c.y, c.h) < baselineOverlapMin) continue;
+        if (Math.min(c.h, medH) / Math.max(1, Math.max(c.h, medH)) < heightRatioMin) continue;
+        group.push(byX[m]);
+        used[idx] = true;
+        changed = true;
+      }
     }
-    flushGroup(group, regions, minComponents);
+    flushGroup(group.map((g) => g.c), regions, minComponents);
   }
 
   // 5) Reject overly large regions (whole-drawing geometry).
