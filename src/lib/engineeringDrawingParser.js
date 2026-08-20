@@ -33,6 +33,45 @@ const normUnit = (u) => (u ? (u === '"' ? 'in' : u.toLowerCase()) : null);
 // allowing leading-dot decimals common on inch dimensions (e.g. .250, .004).
 const NUM = '(\\d+(?:\\.\\d+)?|\\.\\d+)';
 const DIM_UNIT = '(mm|in|cm|")';
+const CONDITION = '(MAX|MIN|TYPICAL|TYP)';
+const cond = (s) => (s ? s.toUpperCase() : null);
+
+/**
+ * Parse the body of a callout (text after the leading symbol/prefix) into a
+ * numeric value with optional tolerance and/or condition. Returns null when the
+ * body is not a confident numeric callout. Shared by the radius and diameter
+ * matchers so both support leading-dot decimals, ± / +x/-y tolerances, MAX/MIN
+ * conditions, and trailing units.
+ */
+function parseNumericCallout(body) {
+  if (!body) return null;
+
+  // Bilateral: nominal ± tol
+  let m = body.match(new RegExp(`^${NUM}\\s*${DIM_UNIT}?\\s*±\\s*${NUM}\\s*${DIM_UNIT}?\\s*${CONDITION}?\\s*$`, 'i'));
+  if (m) {
+    return { value: Number(m[1]), unit: normUnit(m[2] || m[4]), tolerance_type: 'bilateral', plus_tolerance: Number(m[3]), minus_tolerance: Number(m[3]), condition: cond(m[5]) };
+  }
+
+  // Unilateral (slash form): nominal +plus/−minus
+  m = body.match(new RegExp(`^${NUM}\\s*${DIM_UNIT}?\\s*\\+\\s*${NUM}\\s*/\\s*-\\s*${NUM}\\s*${DIM_UNIT}?\\s*${CONDITION}?\\s*$`, 'i'));
+  if (m) {
+    return { value: Number(m[1]), unit: normUnit(m[2] || m[5]), tolerance_type: 'unilateral', plus_tolerance: Number(m[3]), minus_tolerance: Number(m[4]), condition: cond(m[6]) };
+  }
+
+  // Unilateral (space form): nominal +plus −minus
+  m = body.match(new RegExp(`^${NUM}\\s*${DIM_UNIT}?\\s*\\+\\s*${NUM}\\s*-\\s*${NUM}\\s*${DIM_UNIT}?\\s*${CONDITION}?\\s*$`, 'i'));
+  if (m) {
+    return { value: Number(m[1]), unit: normUnit(m[2] || m[5]), tolerance_type: 'unilateral', plus_tolerance: Number(m[3]), minus_tolerance: Number(m[4]), condition: cond(m[6]) };
+  }
+
+  // Plain: nominal, optional unit, optional condition
+  m = body.match(new RegExp(`^${NUM}\\s*${DIM_UNIT}?\\s*${CONDITION}?\\s*$`, 'i'));
+  if (m) {
+    return { value: Number(m[1]), unit: normUnit(m[2]), tolerance_type: 'none', plus_tolerance: null, minus_tolerance: null, condition: cond(m[3]) };
+  }
+
+  return null;
+}
 
 /** Curated finish keywords (matched as substrings, case-insensitive). */
 const FINISH_KEYWORDS = [
@@ -99,27 +138,61 @@ const NOTE_PHRASES = [
 // ---------------------------------------------------------------------------
 
 function matchDiameter(text) {
-  const m = text.match(/(?:[Ø⌀ø]\s*(\d+(?:\.\d+)?))|(?:\bDIA\.?\s*(\d+(?:\.\d+)?))/i);
+  const original = text.trim();
+  const norm = text.replace(/\+\s*\/\s*-/g, '±').replace(/\s+/g, ' ').trim();
+
+  // Leading symbol: Ø/⌀/ø, or DIA (optionally "DIA." only when that dot is not the
+  // start of a leading-dot value). Letter "O" is treated as Ø only in strong
+  // diameter context — when it begins the callout and is immediately followed by
+  // a digit or a decimal point — never as a blanket O→Ø substitution.
+  let m = norm.match(new RegExp(`^(?:[Ø⌀ø]|DIA(?:\\.(?!\\d))?)\\s*(.+)$`, 'i'));
+  let usedO = false;
+  if (!m) {
+    m = norm.match(new RegExp(`^O(?=\\s*\\d|\\s*\\.)\\s*(.+)$`, 'i'));
+    if (m) usedO = true;
+  }
   if (!m) return null;
-  const value = Number(m[1] ?? m[2]);
-  const unit = normUnit((text.match(UNIT_RE) || [])[1]);
-  return { category: 'diameters', value, unit, type: 'diameter', spec: text.trim() };
+
+  const callout = parseNumericCallout(m[1].trim());
+  if (!callout) return null;
+
+  const out = {
+    category: 'diameters',
+    type: 'diameter',
+    nominal: callout.value,
+    tolerance_type: callout.tolerance_type,
+    plus_tolerance: callout.plus_tolerance,
+    minus_tolerance: callout.minus_tolerance,
+    original_text: original,
+  };
+  if (callout.unit) out.unit = callout.unit;
+  if (usedO) out.ocr_substitution = 'O→Ø';
+  return out;
 }
 
 function matchRadius(text) {
-  // R or SR (spherical radius) prefix, not preceded by a letter (avoids "Ra").
-  const m = text.match(/(?:^|[^A-Za-z])(S?R)\s*(\d+(?:\.\d+)?)/i);
+  const original = text.trim();
+  const norm = text.replace(/\+\s*\/\s*-/g, '±').replace(/\s+/g, ' ').trim();
+
+  // R or SR prefix at the start of the callout. An optional space is allowed
+  // between the prefix and the value (e.g. "R .125"). "Ra"/"Rz" surface-roughness
+  // callouts fall through because their body does not start with a number.
+  const m = norm.match(/^(S?R)\s*(.+)$/i);
   if (!m) return null;
-  const value = Number(m[2]);
-  const unit = normUnit((text.match(UNIT_RE) || [])[1]);
+
+  const callout = parseNumericCallout(m[2].trim());
+  if (!callout) return null;
+
   const isSpherical = /^s/i.test(m[1]);
-  return {
+  const out = {
     category: 'radii',
-    value,
-    unit,
     type: isSpherical ? 'spherical_radius' : 'radius',
-    spec: text.trim(),
+    value: callout.value,
+    condition: callout.condition,
+    original_text: original,
   };
+  if (callout.unit) out.unit = callout.unit;
+  return out;
 }
 
 function matchQuantity(text) {
@@ -192,7 +265,7 @@ function matchDimension(text) {
       tolerance_type: 'bilateral',
       plus_tolerance: tol,
       minus_tolerance: tol,
-      original_text: norm,
+      original_text: text.trim(),
     };
   }
 
@@ -207,7 +280,7 @@ function matchDimension(text) {
       tolerance_type: 'unilateral',
       plus_tolerance: Number(m[3]),
       minus_tolerance: Number(m[4]),
-      original_text: norm,
+      original_text: text.trim(),
     };
   }
 
@@ -222,7 +295,7 @@ function matchDimension(text) {
       tolerance_type: 'unilateral',
       plus_tolerance: Number(m[3]),
       minus_tolerance: Number(m[4]),
-      original_text: norm,
+      original_text: text.trim(),
     };
   }
 
@@ -239,7 +312,7 @@ function matchDimension(text) {
       minus_tolerance: null,
       upper: Number(m[1]),
       lower: Number(m[2]),
-      original_text: norm,
+      original_text: text.trim(),
     };
   }
 
@@ -254,7 +327,7 @@ function matchDimension(text) {
       tolerance_type: 'none',
       plus_tolerance: null,
       minus_tolerance: null,
-      original_text: norm,
+      original_text: text.trim(),
     };
   }
 
@@ -269,7 +342,7 @@ function matchDimension(text) {
       tolerance_type: 'none',
       plus_tolerance: null,
       minus_tolerance: null,
-      original_text: norm,
+      original_text: text.trim(),
     };
   }
 
@@ -286,7 +359,7 @@ function matchDimension(text) {
       tolerance_type: 'none',
       plus_tolerance: null,
       minus_tolerance: null,
-      original_text: norm,
+      original_text: text.trim(),
     };
   }
 
@@ -302,7 +375,7 @@ function matchDimension(text) {
       tolerance_type: 'none',
       plus_tolerance: null,
       minus_tolerance: null,
-      original_text: norm,
+      original_text: text.trim(),
     };
   }
 
