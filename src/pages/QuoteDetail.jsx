@@ -26,6 +26,7 @@ import CharacterTextDetectorTest from '@/components/CharacterTextDetectorTest';
 import EngineeringLineRemovalTest from '@/components/EngineeringLineRemovalTest';
 import CleanedImageTextDetectionTest from '@/components/CleanedImageTextDetectionTest';
 import TextRegionNeighborGrowthTest from '@/components/TextRegionNeighborGrowthTest';
+import NeighborGrownRegionOcrTest from '@/components/NeighborGrownRegionOcrTest';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { generateQuotePdf } from '@/lib/generateQuotePdf';
 import { cn } from '@/lib/utils';
@@ -427,6 +428,7 @@ export default function QuoteDetail() {
                     <EngineeringLineRemovalTest url={selectedDoc.url} />
                     <CleanedImageTextDetectionTest url={selectedDoc.url} />
                     <TextRegionNeighborGrowthTest url={selectedDoc.url} />
+                    <NeighborGrownRegionOcrTest url={selectedDoc.url} />
                   </div>
                 </>
               ) : (
