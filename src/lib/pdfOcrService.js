@@ -16,6 +16,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { recognize as tesseractRecognize } from 'tesseract.js';
 import { fromPdfText, fromOcrWord, flattenOcrWords } from './extractedItem';
+import { buildOcrVersions } from './imagePreprocessing';
 
 // Configure the pdf.js worker once. Consumers may override via setPdfWorkerSrc.
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -26,6 +27,9 @@ export const EMBEDDED_TEXT_THRESHOLD = 20;
 
 /** Default render scale for off-screen OCR canvases. */
 export const DEFAULT_OCR_SCALE = 3.0;
+
+/** Higher render scale for OCR-preprocessing tests (~360 DPI at 72 DPI base). */
+export const HIGH_OCR_SCALE = 5.0;
 
 /**
  * Override the pdf.js worker source if you ship the worker locally.
@@ -105,6 +109,55 @@ export async function ocrCanvas(imageOrCanvas, pageNum, { scale = DEFAULT_OCR_SC
     text: data.text || '',
     confidence: typeof data.confidence === 'number' ? data.confidence : null,
   };
+}
+
+/**
+ * Build the three preprocessing variants of a high-resolution page render
+ * (original, grayscale+contrast, thresholded B&W) and run Tesseract.js
+ * against each. Used by the OCR-preprocessing diagnostic to compare which
+ * method yields the best accuracy on engineering drawings. No version is
+ * chosen automatically here.
+ *
+ * @param {HTMLCanvasElement} sourceCanvas - high-resolution PDF.js render
+ * @param {number} pageNum
+ * @param {object} [opts]
+ * @param {string} [opts.lang='eng']
+ * @param {(status: string)=>void} [opts.onStatus]
+ * @returns {Promise<{ key, label, method, text, confidence, wordCount, error? }[]>}
+ */
+export async function runOcrVersions(sourceCanvas, pageNum, { lang = 'eng', onStatus } = {}) {
+  const versions = buildOcrVersions(sourceCanvas);
+  const results = [];
+  for (const v of versions) {
+    onStatus?.(`OCR ${v.label}`);
+    try {
+      const { words, text, confidence } = await ocrCanvas(v.canvas, pageNum, {
+        scale: HIGH_OCR_SCALE,
+        lang,
+        onStatus,
+      });
+      results.push({
+        key: v.key,
+        label: v.label,
+        method: v.method,
+        text,
+        confidence,
+        wordCount: words.length,
+      });
+    } catch (err) {
+      results.push({
+        key: v.key,
+        label: v.label,
+        method: v.method,
+        text: '',
+        confidence: null,
+        wordCount: 0,
+        error: err?.message || String(err),
+      });
+    }
+  }
+  onStatus?.('OCR versions complete');
+  return results;
 }
 
 /**
