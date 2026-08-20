@@ -14,7 +14,9 @@
 //
 // Output is structured engineering data. Each parsed item preserves the
 // original text, page, confidence, source engine, and bounding box (when
-// available), plus parsed fields (value, unit, type, spec, tolerance).
+// available), plus parsed fields. Dimensions emit { type, nominal, unit,
+// tolerance_type, plus_tolerance, minus_tolerance, original_text }; other
+// categories emit { value, unit, type, spec }.
 //
 // Classification is deterministic: regular expressions + engineering notation
 // patterns, applied in priority order so specific callouts (Ø, R, QTY, Ra,
@@ -26,6 +28,11 @@
 
 const UNIT_RE = /(mm|in|cm|")/i;
 const normUnit = (u) => (u ? (u === '"' ? 'in' : u.toLowerCase()) : null);
+
+// Numeric token for dimensions: matches "1.122", ".375", "12", "12.5" —
+// allowing leading-dot decimals common on inch dimensions (e.g. .250, .004).
+const NUM = '(\\d+(?:\\.\\d+)?|\\.\\d+)';
+const DIM_UNIT = '(mm|in|cm|")';
 
 /** Curated finish keywords (matched as substrings, case-insensitive). */
 const FINISH_KEYWORDS = [
@@ -86,8 +93,9 @@ const NOTE_PHRASES = [
 ];
 
 // ---------------------------------------------------------------------------
-// Per-category matchers. Each returns { category, value, unit, type, spec,
-// tolerance? } or null. Order in `parseItem` is the classification priority.
+// Per-category matchers. Each returns { category, ...fields } or null, where
+// fields vary by category (dimensions emit nominal/tolerance_type/etc.; other
+// categories emit value/unit/type/spec). Order in MATCHERS is the priority.
 // ---------------------------------------------------------------------------
 
 function matchDiameter(text) {
@@ -164,69 +172,140 @@ function matchMaterial(text) {
 }
 
 function matchDimension(text) {
-  // Bilateral tolerance: 12.5 ±0.1  /  12.5mm ±0.1mm
-  let m = text.match(/(\d+(?:\.\d+)?)\s*(mm|in|cm|")?\s*±\s*(\d+(?:\.\d+)?)\s*(mm|in|cm|")?/i);
+  // Normalize common OCR variations: a standalone "+/-" (and spaced variants
+  // such as "+ / -") becomes "±". The "+x/-y" unilateral form (e.g. "+.002/-.000")
+  // is untouched because its slash sits between digits, not between the + and -.
+  // Whitespace is collapsed; digits and decimal points are never altered.
+  const norm = text.replace(/\+\s*\/\s*-/g, '±').replace(/\s+/g, ' ').trim();
+  if (!norm) return null;
+
+  // Bilateral tolerance: nominal ± tol  (1.122±.004, .375±.003, 1.040 ± .004)
+  let m = norm.match(new RegExp(`^${NUM}\\s*${DIM_UNIT}?\\s*±\\s*${NUM}\\s*${DIM_UNIT}?$`, 'i'));
   if (m) {
     const nominal = Number(m[1]);
     const tol = Number(m[3]);
     return {
       category: 'dimensions',
-      value: nominal,
+      type: 'linear_dimension',
+      nominal,
       unit: normUnit(m[2] || m[4]),
-      type: 'bilateral',
-      tolerance: { type: 'bilateral', value: tol, upper: nominal + tol, lower: nominal - tol },
-      spec: text.trim(),
+      tolerance_type: 'bilateral',
+      plus_tolerance: tol,
+      minus_tolerance: tol,
+      original_text: norm,
     };
   }
-  // Unilateral tolerance: 12.5 +0.1 -0.05
-  m = text.match(/(\d+(?:\.\d+)?)\s*(mm|in|cm|")?\s*\+\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*(mm|in|cm|")?/i);
+
+  // Unilateral tolerance (slash form): nominal +plus/−minus  (2.000 +.002/-.000)
+  m = norm.match(new RegExp(`^${NUM}\\s*${DIM_UNIT}?\\s*\\+\\s*${NUM}\\s*/\\s*-\\s*${NUM}\\s*${DIM_UNIT}?$`, 'i'));
   if (m) {
-    const nominal = Number(m[1]);
     return {
       category: 'dimensions',
-      value: nominal,
+      type: 'linear_dimension',
+      nominal: Number(m[1]),
       unit: normUnit(m[2] || m[5]),
-      type: 'unilateral',
-      tolerance: { type: 'unilateral', upper: nominal + Number(m[3]), lower: nominal - Number(m[4]) },
-      spec: text.trim(),
+      tolerance_type: 'unilateral',
+      plus_tolerance: Number(m[3]),
+      minus_tolerance: Number(m[4]),
+      original_text: norm,
     };
   }
-  // Limit dimension: 10.00/9.98 (decimals required — bare integer ratios like
-  // 1/4 are fractional inches, handled below).
-  m = text.match(/(\d+\.\d+)\s*\/\s*(\d+\.\d+)\s*(mm|in|cm|")?/i);
+
+  // Unilateral tolerance (space form): nominal +plus −minus  (15.0 +0.1 -0.0)
+  m = norm.match(new RegExp(`^${NUM}\\s*${DIM_UNIT}?\\s*\\+\\s*${NUM}\\s*-\\s*${NUM}\\s*${DIM_UNIT}?$`, 'i'));
   if (m) {
     return {
       category: 'dimensions',
-      value: Number(m[1]),
+      type: 'linear_dimension',
+      nominal: Number(m[1]),
+      unit: normUnit(m[2] || m[5]),
+      tolerance_type: 'unilateral',
+      plus_tolerance: Number(m[3]),
+      minus_tolerance: Number(m[4]),
+      original_text: norm,
+    };
+  }
+
+  // Limit dimension: upper/lower (both decimals required)  (10.00/9.98)
+  m = norm.match(new RegExp(`^(\\d+\\.\\d+)\\s*/\\s*(\\d+\\.\\d+)\\s*${DIM_UNIT}?$`, 'i'));
+  if (m) {
+    return {
+      category: 'dimensions',
+      type: 'limit_dimension',
+      nominal: null,
       unit: normUnit(m[3]),
-      type: 'limit',
-      tolerance: { type: 'limit', upper: Number(m[1]), lower: Number(m[2]) },
-      spec: text.trim(),
+      tolerance_type: 'limit',
+      plus_tolerance: null,
+      minus_tolerance: null,
+      upper: Number(m[1]),
+      lower: Number(m[2]),
+      original_text: norm,
     };
   }
-  // Linear with explicit unit: 12.5 mm / 1.500"
-  m = text.match(/(\d+(?:\.\d+)?)\s*(mm|in|cm|")\b/i);
-  if (m) return { category: 'dimensions', value: Number(m[1]), unit: normUnit(m[2]), type: 'linear', tolerance: { type: 'none' }, spec: text.trim() };
+
   // Fractional inch: 1-1/2
-  m = text.match(/(\d+)-(\d+)\/(\d+)/);
+  m = norm.match(/^(\d+)-(\d+)\/(\d+)\s*$/);
   if (m) {
     return {
       category: 'dimensions',
-      value: Number(m[1]) + Number(m[2]) / Number(m[3]),
+      type: 'fraction_dimension',
+      nominal: Number(m[1]) + Number(m[2]) / Number(m[3]),
       unit: 'in',
-      type: 'fraction',
-      tolerance: { type: 'none' },
-      spec: text.trim(),
+      tolerance_type: 'none',
+      plus_tolerance: null,
+      minus_tolerance: null,
+      original_text: norm,
     };
   }
+
   // Fractional inch: 1/2
-  m = text.match(/(\d+)\/(\d+)/);
+  m = norm.match(/^(\d+)\/(\d+)\s*$/);
   if (m) {
-    return { category: 'dimensions', value: Number(m[1]) / Number(m[2]), unit: 'in', type: 'fraction', tolerance: { type: 'none' }, spec: text.trim() };
+    return {
+      category: 'dimensions',
+      type: 'fraction_dimension',
+      nominal: Number(m[1]) / Number(m[2]),
+      unit: 'in',
+      tolerance_type: 'none',
+      plus_tolerance: null,
+      minus_tolerance: null,
+      original_text: norm,
+    };
   }
-  // Bare decimal: 12.5 (treated as a linear dimension candidate)
-  m = text.match(/(\d+\.\d+)/);
-  if (m) return { category: 'dimensions', value: Number(m[1]), unit: null, type: 'linear', tolerance: { type: 'none' }, spec: text.trim() };
+
+  // Plain linear dimension: a decimal number, optionally with a unit. A decimal
+  // point is required so bare integers — ambiguous as note numbers, quantities,
+  // etc. — are not guessed as dimensions.
+  m = norm.match(new RegExp(`^(\\d*\\.\\d+)\\s*${DIM_UNIT}?$`, 'i'));
+  if (m) {
+    return {
+      category: 'dimensions',
+      type: 'linear_dimension',
+      nominal: Number(m[1]),
+      unit: normUnit(m[2]),
+      tolerance_type: 'none',
+      plus_tolerance: null,
+      minus_tolerance: null,
+      original_text: norm,
+    };
+  }
+
+  // Whole-number dimension with an explicit unit (e.g. "12 mm") — the unit makes
+  // it unambiguous even without a decimal point.
+  m = norm.match(new RegExp(`^(\\d+)\\s*${DIM_UNIT}$`, 'i'));
+  if (m) {
+    return {
+      category: 'dimensions',
+      type: 'linear_dimension',
+      nominal: Number(m[1]),
+      unit: normUnit(m[2]),
+      tolerance_type: 'none',
+      plus_tolerance: null,
+      minus_tolerance: null,
+      original_text: norm,
+    };
+  }
+
   return null;
 }
 
@@ -304,23 +383,18 @@ export function parseItem(item) {
   const text = item?.text ?? '';
   const parsed = classify(text) || {
     category: 'unclassified',
-    value: null,
-    unit: null,
     type: 'unclassified',
     spec: text.trim(),
   };
+  const { category, ...fields } = parsed;
   return {
-    category: parsed.category,
+    category,
     text,
     page: item?.page ?? null,
     confidence: item?.confidence ?? null,
     source: item?.source ?? null,
     bbox: bboxOf(item),
-    value: parsed.value ?? null,
-    unit: parsed.unit ?? null,
-    type: parsed.type,
-    spec: parsed.spec,
-    ...(parsed.tolerance ? { tolerance: parsed.tolerance } : {}),
+    ...fields,
   };
 }
 
